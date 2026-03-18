@@ -1,28 +1,48 @@
 "use client"
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Wrapper from "./components/Wrapper";
 import { FolderKanban } from "lucide-react";
-import { createProject } from "./actions";
+import { createProject, getProjectsCreatedByUSer } from "./actions";
 import { useUser } from "@clerk/nextjs";
 import { toast } from "react-toastify";
+import { Project } from "@/type";
+import ProjectComponent from "./components/ProjectComponent";
 
 export default function Home() {
 
-  const {user} = useUser()
+  const { user } = useUser()
   const email = user?.primaryEmailAddress?.emailAddress as string
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [projects, setProjects] = useState<Project[]>([])
+
+  const fetchProjects = async (email: string) => {
+    try {
+      const myproject = await getProjectsCreatedByUSer(email)
+      setProjects(myproject)
+      console.log(myproject)
+    } catch (error) {
+      console.error(`Erreur lors du chargement des projets:`, error)
+    }
+  }
+
+  useEffect(() => {
+    if (email) {
+      fetchProjects(email)
+    }
+  }, [email])
 
   const handleSubmit = async () => {
     try {
       const modal = document.getElementById('my_modal_3') as HTMLDialogElement
       const project = await createProject(name, description, email)
-      if(modal){
+      if (modal) {
         modal.close()
       }
       setName(""),
       setDescription("")
+      fetchProjects(email)
       toast.success("Projet Créé")
     } catch (error) {
       console.error(`Error creating project:`, error);
@@ -34,7 +54,7 @@ export default function Home() {
       <div>
 
         {/* You can open the modal using document.getElementById('ID').showModal() method */}
-        <button className="btn btn-soft btn-primary border border-base-300 mb-6" onClick={() => (document.getElementById('my_modal_3') as HTMLDialogElement).showModal()}>Nouveau Projet <FolderKanban/></button>
+        <button className="btn btn-soft btn-primary border border-base-300 mb-6" onClick={() => (document.getElementById('my_modal_3') as HTMLDialogElement).showModal()}>Nouveau Projet <FolderKanban /></button>
         <dialog id="my_modal_3" className="modal">
           <div className="modal-box">
             <form method="dialog">
@@ -61,11 +81,29 @@ export default function Home() {
               >
               </textarea>
               <button className="btn btn-primary" onClick={handleSubmit}>
-                Nouveau Projet <FolderKanban/>
+                Nouveau Projet <FolderKanban />
               </button>
             </div>
           </div>
         </dialog>
+
+        <div className="w-full">
+          {projects.length > 0 ? (
+            <ul className="w-full grid md:grid-cols-3 gap-6">
+              {
+                projects.map((project) => (
+                  <li key={project.id}>
+                    <ProjectComponent project={project} admin={1} style={true}></ProjectComponent>
+                  </li>
+                ))
+              }
+            </ul>
+          ) : (
+            <div>
+
+            </div>
+          )}
+        </div>
 
       </div>
     </Wrapper>

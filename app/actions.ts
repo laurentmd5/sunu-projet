@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/prisma";
 
-export async function checkAndAddUSer(email: string, name: string) {
+export async function checkAndAddUser(email: string, name: string) {
     if (!email) return
     try {
         const existingUser = await prisma.user.findUnique({

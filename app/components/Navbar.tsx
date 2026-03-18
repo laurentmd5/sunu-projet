@@ -1,12 +1,13 @@
 "use client"
 import { FolderKanban, Menu, X } from 'lucide-react'
-import React, { useState } from 'react'
-import { UserButton } from '@clerk/nextjs'
+import React, { useEffect, useState } from 'react'
+import { UserButton, useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { checkAndAddUser } from '../actions'
 
 const Navbar = () => {
-
+    const { user } = useUser()
     const [menuOpen, setMenuOpen] = useState(false)
     const pathname = usePathname()
 
@@ -19,7 +20,13 @@ const Navbar = () => {
         }
     ]
 
-        const isActiveLink = (href: string) =>
+    useEffect(() => {
+        if (user?.primaryEmailAddress?.emailAddress && user?.fullName) {
+            checkAndAddUser(user?.primaryEmailAddress?.emailAddress, user?.fullName)
+        }
+    }, [user])
+
+    const isActiveLink = (href: string) =>
         pathname.replace(/\/$/, "") === href.replace(/\/$/, "");
 
 

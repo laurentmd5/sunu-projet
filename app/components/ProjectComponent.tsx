@@ -3,14 +3,23 @@ import { Copy, ExternalLink, FolderKanban, Trash } from 'lucide-react';
 import Link from 'next/link';
 import React, { FC } from 'react'
 import { toast } from 'react-toastify';
+import { deleteProjectById } from '../actions';
 
 interface ProjectProps {
     project: Project
     admin: number;
     style: boolean
+    onDelete?: (id: string) => void;
 }
 
-const ProjectComponent: FC<ProjectProps> = ({ project, admin, style }) => {
+const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete }) => {
+
+    const handleDeleteClick = () => {
+        const isConfirmed = window.confirm("Êtes-vous sûr de vouloir supprimer ce projet ?")
+        if (isConfirmed && onDelete) {
+            onDelete(project.id)
+        }
+    }
 
     const totalTasks = project.tasks?.length
     const tasksByStatus = project.tasks?.reduce(
@@ -31,10 +40,10 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style }) => {
 
 
     const textSizeClass = style ? 'text-sm' : 'text-md'
-    
-    const handleCopyCode = async() => {
+
+    const handleCopyCode = async () => {
         try {
-            if(project.inviteCode){
+            if (project.inviteCode) {
                 await navigator.clipboard.writeText(project.inviteCode)
                 toast.success("Code d'invitation copié")
             }
@@ -74,7 +83,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style }) => {
                     <p className='text-primary font-bold ml-3'>
                         {project.inviteCode}                    </p>
                     <button className='btn btn-sm ml-2'>
-                        <Copy className='w-4' onClick={handleCopyCode}/>
+                        <Copy className='w-4' onClick={handleCopyCode} />
                     </button>
                 </div>
             )}
@@ -135,7 +144,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style }) => {
                 )}
 
                 {admin === 1 && (
-                    <button className='btn btn-sm ml-3'>
+                    <button className='btn btn-sm ml-3' onClick={handleDeleteClick}>
                         <Trash className='w-4' />
                     </button>
                 )}

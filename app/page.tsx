@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Wrapper from "./components/Wrapper";
 import { FolderKanban } from "lucide-react";
-import { createProject, getProjectsCreatedByUSer } from "./actions";
+import { createProject, deleteProjectById, getProjectsCreatedByUSer } from "./actions";
 import { useUser } from "@clerk/nextjs";
 import { toast } from "react-toastify";
 import { Project } from "@/type";
@@ -32,6 +32,16 @@ export default function Home() {
       fetchProjects(email)
     }
   }, [email])
+
+  const deleteProject = async (projectId: string) =>{
+    try {
+      await deleteProjectById(projectId)
+      fetchProjects(email)
+      toast.success("Projet supprimé !")
+    } catch (error) {
+      throw new Error(`Error deleting project:`+ error);
+    }
+  }
 
   const handleSubmit = async () => {
     try {
@@ -93,7 +103,7 @@ export default function Home() {
               {
                 projects.map((project) => (
                   <li key={project.id}>
-                    <ProjectComponent project={project} admin={1} style={true}></ProjectComponent>
+                    <ProjectComponent project={project} admin={1} style={true} onDelete={deleteProject}></ProjectComponent>
                   </li>
                 ))
               }

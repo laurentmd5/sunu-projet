@@ -105,3 +105,18 @@ export async function getProjectsCreatedByUSer(email: string) {
     }
 
 }
+
+export async function deleteProjectById(projectId: string){
+        try {
+
+                await prisma.project.delete({
+                    where :{
+                        id :projectId
+                    }
+                })
+                console.log(`Projet avec l'ID ${projectId} supprimé avec succès.`)
+    } catch (error) {
+        console.error(error)
+        throw new Error
+    }
+}

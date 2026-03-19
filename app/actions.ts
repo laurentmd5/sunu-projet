@@ -121,7 +121,7 @@ export async function deleteProjectById(projectId: string) {
     }
 }
 
-export async function addUserToProject(inviteCode: string, email: string) {
+export async function addUserToProject(email: string, inviteCode: string) {
 
     try {
         const project = await prisma.project.findUnique({

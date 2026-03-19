@@ -137,8 +137,8 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
 
                 {style && (
                     <Link className='btn btn-primary btn-sm' href={`/project/${project.id}`}>
-                        Tâches
                         <div className='badge badge-sm'>{totalTasks}</div>
+                        Tâches
                         <ExternalLink className='w-4' />
                     </Link>
                 )}

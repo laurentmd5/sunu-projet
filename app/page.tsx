@@ -8,6 +8,7 @@ import { useUser } from "@clerk/nextjs";
 import { toast } from "react-toastify";
 import { Project } from "@/type";
 import ProjectComponent from "./components/ProjectComponent";
+import EmptyState from "./components/EmptyState";
 
 export default function Home() {
 
@@ -33,13 +34,13 @@ export default function Home() {
     }
   }, [email])
 
-  const deleteProject = async (projectId: string) =>{
+  const deleteProject = async (projectId: string) => {
     try {
       await deleteProjectById(projectId)
       fetchProjects(email)
       toast.success("Projet supprimé !")
     } catch (error) {
-      throw new Error(`Error deleting project:`+ error);
+      throw new Error(`Error deleting project:` + error);
     }
   }
 
@@ -51,7 +52,7 @@ export default function Home() {
         modal.close()
       }
       setName(""),
-      setDescription("")
+        setDescription("")
       fetchProjects(email)
       toast.success("Projet Créé")
     } catch (error) {
@@ -110,7 +111,10 @@ export default function Home() {
             </ul>
           ) : (
             <div>
-
+              <EmptyState
+                imageSrc='/empty-project.png' 
+                imageAlt="Picture of an empty project"
+                message="Aucun projet créé"/>
             </div>
           )}
         </div>

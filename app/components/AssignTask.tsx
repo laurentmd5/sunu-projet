@@ -1,18 +1,21 @@
 import { User } from '@prisma/client';
 import React, { FC } from 'react';
 import UserInfo from './UserInfo';
+import { on } from 'events';
 
 interface AssignTaskProps {
-    users: User[]
-    projectId: string
+    users: User[];
+    projectId: string;
+    onAssignTask : (user : User) => void
 }
 
-const AssignTask: FC<AssignTaskProps> = ({ users, projectId }) => {
+const AssignTask: FC<AssignTaskProps> = ({ users, projectId , onAssignTask}) => {
 
     const [selectedUser, setSelectedUser] = React.useState<User | null>(null)
 
     const handleAssign = (user: User) => {
         setSelectedUser(user)
+        onAssignTask(user)
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
         if (modal) {
             modal.close()
@@ -20,7 +23,7 @@ const AssignTask: FC<AssignTaskProps> = ({ users, projectId }) => {
     }
 
     return (
-        <div className='w-full max-w-sm'>
+        <div className='w-full'>
             {/* You can open the modal using document.getElementById('ID').showModal() method */}
             <div className="cursor-pointer border border-base-300 p-5 rounded-xl w-full" onClick={() => (document.getElementById('my_modal_3') as HTMLDialogElement).showModal()}>
                 <UserInfo

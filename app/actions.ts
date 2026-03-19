@@ -253,3 +253,28 @@ export async function getProjectInfo(idProject: string, details: boolean) {
         throw new Error
     }
 }
+
+export async function getProjectUsers(idProject: string) {
+    try {
+        const projectWithUsers = await prisma.project.findUnique({
+            where: {
+                id: idProject
+            },
+            include: {
+                users: {
+                    include: {
+                        user: true
+                    }
+                }
+            }
+        })
+
+        const users = projectWithUsers?.users.map((projectUser => projectUser.user)) || []
+
+        return users
+
+    } catch (error) {
+        console.error(error)
+        throw new Error
+    }
+}

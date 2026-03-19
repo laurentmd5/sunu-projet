@@ -278,3 +278,61 @@ export async function getProjectUsers(idProject: string) {
         throw new Error
     }
 }
+
+export async function createTask(
+    name: string,
+    description: string,
+    dueDate: Date | null,
+    projectId: string,
+    createdByEmail: string,
+    assignToEmail: string | null
+) {
+    try {
+
+        const createdBy = await prisma.user.findUnique({
+            where: {
+                email: createdByEmail
+            }
+        })
+
+        if (!createdBy) {
+            throw new Error(`Utilisateur avec l'email ${createdByEmail} introuvable`)
+        }
+
+        let assignedUserId = createdBy.id
+
+        if (assignToEmail) {
+            const assignedUser = await prisma.user.findUnique({
+                where: {
+                    email: assignToEmail
+                }
+            })
+
+            if (!assignedUser) {
+                throw new Error(`Utilisateur avec l'email ${assignToEmail} introuvable`)
+            }
+            assignedUserId = assignedUser.id
+
+        }
+
+        const newTask = await prisma.task.create({
+            data: {
+                name: name,
+                description: description,
+                dueDate: dueDate,
+                projectId: projectId,
+                createdById: createdBy.id,
+                userId: assignedUserId
+
+            }
+        })
+
+        console.log(`Tâche créée avec succès :`, newTask)
+        return newTask;
+
+    } catch (error) {
+        console.error(error)
+        throw new Error
+    }
+
+}

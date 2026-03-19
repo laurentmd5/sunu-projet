@@ -106,17 +106,69 @@ export async function getProjectsCreatedByUSer(email: string) {
 
 }
 
-export async function deleteProjectById(projectId: string){
-        try {
+export async function deleteProjectById(projectId: string) {
+    try {
 
-                await prisma.project.delete({
-                    where :{
-                        id :projectId
-                    }
-                })
-                console.log(`Projet avec l'ID ${projectId} supprimé avec succès.`)
+        await prisma.project.delete({
+            where: {
+                id: projectId
+            }
+        })
+        console.log(`Projet avec l'ID ${projectId} supprimé avec succès.`)
     } catch (error) {
         console.error(error)
         throw new Error
     }
+}
+
+export async function addUserToProject(inviteCode: string, email: string) {
+
+    try {
+        const project = await prisma.project.findUnique({
+            where: {
+                inviteCode
+            }
+        })
+
+        if (!project) {
+            throw new Error("Code d'invitation invalide")
+        }
+
+        const user = await prisma.user.findUnique({
+            where: {
+                email
+            }
+        })
+
+        if (!user) {
+            throw new Error("Utilisateur non trouvé")
+        }
+
+        const existingAssociation = await prisma.projectUser.findUnique({
+            where: {
+                userId_projectId: {
+                    projectId: project.id,
+                    userId: user.id
+                }
+            }
+        })
+
+        if (existingAssociation) {
+            throw new Error("L'utilisateur est déjà membre de ce projet")
+        }
+
+        await prisma.projectUser.create({
+            data: {
+                projectId: project.id,
+                userId: user.id
+            }
+        })
+
+        return 'Utilisateur ajouté au projet avec succès';
+
+    } catch (error) {
+        console.error(error)
+        throw new Error
+    }
+
 }

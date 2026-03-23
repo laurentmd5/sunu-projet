@@ -353,19 +353,58 @@ export async function deleteTaskById(taskId: string) {
 export const getTaskDetails = async (taskId: string) => {
     try {
         const task = await prisma.task.findUnique({
-            where : {id: taskId},
-            include : {
+            where: { id: taskId },
+            include: {
                 project: true,
                 user: true,
                 createdBy: true
             }
         })
 
-        if(!task){
+        if (!task) {
             throw new Error('Tâche non trouvée')
         }
-        
-        return task 
+
+        return task
+
+    } catch (error) {
+        console.error(error)
+        throw new Error
+    }
+}
+
+export const updateTaskStatus = async (taskId: string, newStatus: string, solutionDescription?: string) => {
+    try {
+        const existingTask = await prisma.task.findUnique({
+            where: {
+                id: taskId
+            }
+        })
+
+        if (!existingTask) {
+            throw new Error('Tâche non trouvée')
+        }
+
+        if (newStatus === "Done" && solutionDescription) {
+            await prisma.task.update({
+                where: {
+                    id: taskId
+                },
+                data: {
+                    status: newStatus,
+                    solutionDescription
+                }
+            })
+        } else {
+            await prisma.task.update({
+                where: {
+                    id: taskId
+                },
+                data: {
+                    status: newStatus
+                }
+            })
+        }
 
     } catch (error) {
         console.error(error)

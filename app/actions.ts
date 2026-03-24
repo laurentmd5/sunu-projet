@@ -20,8 +20,9 @@ import {
     createTaskSchema,
     updateTaskStatusSchema,
 } from "@/lib/validations";
+import { TASK_STATUSES, TASK_STATUS_VALUES } from "@/lib/task-status";
 
-const ALLOWED_TASK_STATUSES = ["To Do", "In Progress", "Done"] as const;
+const ALLOWED_TASK_STATUSES = TASK_STATUS_VALUES;
 
 export async function checkAndAddUser(email: string, name: string) {
     if (!email) return
@@ -442,7 +443,7 @@ export const updateTaskStatus = async (
         throw new ActionError("Vous n'êtes pas autorisé à modifier cette tâche.", 403);
     }
 
-    if (parsed.newStatus === "Done" && !parsed.solutionDescription?.trim()) {
+    if (parsed.newStatus === TASK_STATUSES.DONE && !parsed.solutionDescription?.trim()) {
         throw new ActionError(
             "Une description de solution est requise pour terminer la tâche.",
             400
@@ -454,7 +455,7 @@ export const updateTaskStatus = async (
         data: {
             status: parsed.newStatus,
             solutionDescription:
-                parsed.newStatus === "Done" ? parsed.solutionDescription : null,
+                parsed.newStatus === TASK_STATUSES.DONE ? parsed.solutionDescription : null,
         },
     });
 

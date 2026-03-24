@@ -51,7 +51,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             }
             setTaskCounts(counts)
         }
-    }, [project,email])
+    }, [project, email])
 
     const filteredTasks = project?.tasks?.filter(task => {
         const statusMatch = !statusFilter || task.status == statusFilter
@@ -65,7 +65,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             fetchInfos(projectId)
             toast.success("Tâche supprimée avec succès")
         } catch (error) {
-            toast.error("Error Task project")
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
         }
     }
 

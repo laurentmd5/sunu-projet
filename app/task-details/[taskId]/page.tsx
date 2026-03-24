@@ -54,7 +54,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             const project = await getProjectInfo(projectId, false)
             setProject(project)
         } catch (error) {
-            toast.error("Erreur lors du chargement du projet.")
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
         }
     }
 

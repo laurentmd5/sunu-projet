@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TASK_STATUS_VALUES } from "@/lib/task-status";
 
 export const createProjectSchema = z.object({
     name: z
@@ -61,9 +62,9 @@ export const updateTaskStatusSchema = z.object({
         .trim()
         .min(1, "Tâche invalide."),
     newStatus: z
-        .enum(["To Do", "In Progress", "Done"])
+        .enum(TASK_STATUS_VALUES)
         .default("To Do")
-        .refine((val) => ["To Do", "In Progress", "Done"].includes(val), {
+        .refine((val) => TASK_STATUS_VALUES.includes(val), {
             message: "Statut de tâche invalide.",
         }),
     solutionDescription: z

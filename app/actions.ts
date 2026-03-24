@@ -26,29 +26,30 @@ import { TASK_STATUSES, TASK_STATUS_VALUES } from "@/lib/task-status";
 const ALLOWED_TASK_STATUSES = TASK_STATUS_VALUES;
 
 export async function checkAndAddUser(email: string, name: string) {
-    if (!email) return
+    if (!email) return;
+
     try {
         const existingUser = await prisma.user.findUnique({
             where: {
-                email: email
-            }
-        })
-        if (!existingUser && name) {
+                email: email,
+            },
+        });
+
+        if (!existingUser) {
             await prisma.user.create({
                 data: {
                     email,
-                    name
-                }
-            })
-            console.error("Erreur lors de la  vérification de l'utilisateur:");
+                    name: name || email,
+                },
+            });
+
+            console.log("Utilisateur ajouté à la base de données.");
         } else {
-            console.error("Utilisateur déjà présent dans la base de données.");
+            console.log("Utilisateur déjà présent dans la base de données.");
         }
     } catch (error) {
-        console.error("Erreur lors de la vérification de l'utilisateur:", error);
+        console.error("Erreur lors de la vérification de l'utilisateur :", error);
     }
-
-
 }
 
 function generateUniqueCode(): string {

@@ -21,8 +21,11 @@ const Navbar = () => {
     ]
 
     useEffect(() => {
-        if (user?.primaryEmailAddress?.emailAddress && user?.fullName) {
-            checkAndAddUser(user?.primaryEmailAddress?.emailAddress, user?.fullName)
+        const email = user?.primaryEmailAddress?.emailAddress;
+        const name = user?.fullName || user?.firstName || "";
+
+        if (email) {
+            checkAndAddUser(email, name);
         }
     }, [user])
 
@@ -43,12 +46,12 @@ const Navbar = () => {
 
                 <div className='flex items-center'>
                     <Link href="/" className='flex items-center'>
-                    <div className="bg-primary rounded-full p-2">
-                        <FolderKanban className="w-6 h-6" />
-                    </div>
-                    <span className="ml-3 font-bold text-3xl">
-                        Sunu <span className="text-primary">Projets</span>
-                    </span>
+                        <div className="bg-primary rounded-full p-2">
+                            <FolderKanban className="w-6 h-6" />
+                        </div>
+                        <span className="ml-3 font-bold text-3xl">
+                            Sunu <span className="text-primary">Projets</span>
+                        </span>
                     </Link>
                 </div>
 

@@ -30,7 +30,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
 
     const { user } = useUser()
-    const email = user?.primaryEmailAddress?.emailAddress as string
     const [projectId, setProjectId] = useState("")
     const [project, setProject] = useState<Project | null>(null);
     const [usersProject, setUsersProject] = useState<User[]>([]);
@@ -70,10 +69,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             return
         }
         try {
-            await createTask(name, description, dueDate, projectId, email, selectedUser.email)
+            await createTask(name, description, dueDate, projectId, selectedUser.email)
             router.push(`/project/${projectId}`)
         } catch (error) {
-            toast.error("Une erreur est survenue lors de la création de la tâche")
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
         }
     }
 

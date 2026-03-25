@@ -58,6 +58,18 @@ const ROLE_SECTION_META: Record<
     },
 };
 
+type PendingRoleChange = {
+    memberUserId: string;
+    memberName: string;
+    currentRole: "MANAGER" | "MEMBER";
+    newRole: "MANAGER" | "MEMBER";
+};
+
+type PendingRemoval = {
+    memberUserId: string;
+    memberName: string;
+};
+
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const { user } = useUser();
     const email = user?.primaryEmailAddress?.emailAddress as string;
@@ -74,6 +86,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         done: 0,
         assigned: 0,
     });
+
+    const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
+    const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
+    const [isSubmittingSensitiveAction, setIsSubmittingSensitiveAction] = useState(false);
 
     const fetchInfos = async (projectId: string) => {
         try {
@@ -176,27 +192,79 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         }
     };
 
-    const handleRoleChange = async (
-        memberUserId: string,
+    const requestRoleChange = (
+        member: ProjectUserMember,
         newRole: "MANAGER" | "MEMBER"
     ) => {
+        if (member.role === newRole) return;
+
+        setPendingRoleChange({
+            memberUserId: member.userId,
+            memberName: member.user.name || member.user.email,
+            currentRole: member.role as "MANAGER" | "MEMBER",
+            newRole,
+        });
+
+        const modal = document.getElementById("confirm_role_change_modal") as HTMLDialogElement | null;
+        modal?.showModal();
+    };
+
+    const confirmRoleChange = async () => {
+        if (!pendingRoleChange) return;
+
         try {
-            await updateProjectMemberRole(projectId, memberUserId, newRole);
+            setIsSubmittingSensitiveAction(true);
+            await updateProjectMemberRole(
+                projectId,
+                pendingRoleChange.memberUserId,
+                pendingRoleChange.newRole
+            );
             await fetchMembers(projectId);
             toast.success("Rôle mis à jour avec succès");
+            closeRoleChangeModal();
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsSubmittingSensitiveAction(false);
         }
     };
 
-    const handleRemoveMember = async (memberUserId: string) => {
+    const requestRemoveMember = (member: ProjectUserMember) => {
+        setPendingRemoval({
+            memberUserId: member.userId,
+            memberName: member.user.name || member.user.email,
+        });
+
+        const modal = document.getElementById("confirm_remove_member_modal") as HTMLDialogElement | null;
+        modal?.showModal();
+    };
+
+    const confirmRemoveMember = async () => {
+        if (!pendingRemoval) return;
+
         try {
-            await removeProjectMember(projectId, memberUserId);
+            setIsSubmittingSensitiveAction(true);
+            await removeProjectMember(projectId, pendingRemoval.memberUserId);
             await fetchMembers(projectId);
             toast.success("Collaborateur retiré avec succès");
+            closeRemoveMemberModal();
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsSubmittingSensitiveAction(false);
         }
+    };
+
+    const closeRoleChangeModal = () => {
+        const modal = document.getElementById("confirm_role_change_modal") as HTMLDialogElement | null;
+        modal?.close();
+        setPendingRoleChange(null);
+    };
+
+    const closeRemoveMemberModal = () => {
+        const modal = document.getElementById("confirm_remove_member_modal") as HTMLDialogElement | null;
+        modal?.close();
+        setPendingRemoval(null);
     };
 
     const renderMemberCard = (member: ProjectUserMember) => {
@@ -212,7 +280,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             >
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <p className="font-medium wrap-break-word">
+                        <p className="font-medium break-words">
                             {member.user.name || "Utilisateur"}
                             {isCurrentUser && (
                                 <span className="ml-2 text-xs opacity-70">(Vous)</span>
@@ -236,8 +304,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             className="select select-bordered select-sm w-full"
                             value={member.role}
                             onChange={(e) =>
-                                handleRoleChange(
-                                    member.userId,
+                                requestRoleChange(
+                                    member,
                                     e.target.value as "MANAGER" | "MEMBER"
                                 )
                             }
@@ -247,7 +315,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         </select>
 
                         <button
-                            onClick={() => handleRemoveMember(member.userId)}
+                            onClick={() => requestRemoveMember(member)}
                             className="btn btn-sm btn-error btn-outline w-full"
                         >
                             Retirer
@@ -438,6 +506,110 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     </div>
                 </section>
             </div>
+
+            <dialog id="confirm_role_change_modal" className="modal">
+                <div className="modal-box">
+                    <form method="dialog">
+                        <button
+                            className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+                            onClick={closeRoleChangeModal}
+                        >
+                            ✕
+                        </button>
+                    </form>
+
+                    <h3 className="font-bold text-lg">Confirmer le changement de rôle</h3>
+
+                    {pendingRoleChange && (
+                        <>
+                            <p className="py-3 text-sm opacity-80">
+                                Vous êtes sur le point de modifier le rôle de{" "}
+                                <strong>{pendingRoleChange.memberName}</strong>.
+                            </p>
+
+                            <div className="alert alert-warning mb-4">
+                                <span>
+                                    Rôle actuel :{" "}
+                                    <strong>{PROJECT_ROLE_LABELS[pendingRoleChange.currentRole]}</strong>
+                                    {" → "}
+                                    Nouveau rôle :{" "}
+                                    <strong>{PROJECT_ROLE_LABELS[pendingRoleChange.newRole]}</strong>
+                                </span>
+                            </div>
+                        </>
+                    )}
+
+                    <div className="modal-action">
+                        <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={closeRoleChangeModal}
+                            disabled={isSubmittingSensitiveAction}
+                        >
+                            Annuler
+                        </button>
+
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={confirmRoleChange}
+                            disabled={!pendingRoleChange || isSubmittingSensitiveAction}
+                        >
+                            Confirmer
+                        </button>
+                    </div>
+                </div>
+            </dialog>
+
+            <dialog id="confirm_remove_member_modal" className="modal">
+                <div className="modal-box">
+                    <form method="dialog">
+                        <button
+                            className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+                            onClick={closeRemoveMemberModal}
+                        >
+                            ✕
+                        </button>
+                    </form>
+
+                    <h3 className="font-bold text-lg">Retirer ce collaborateur</h3>
+
+                    {pendingRemoval && (
+                        <>
+                            <p className="py-3 text-sm opacity-80">
+                                Vous êtes sur le point de retirer{" "}
+                                <strong>{pendingRemoval.memberName}</strong> de ce projet.
+                            </p>
+
+                            <div className="alert alert-warning mb-4">
+                                <span>
+                                    Cette personne perdra l’accès au projet et à ses tâches associées.
+                                </span>
+                            </div>
+                        </>
+                    )}
+
+                    <div className="modal-action">
+                        <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={closeRemoveMemberModal}
+                            disabled={isSubmittingSensitiveAction}
+                        >
+                            Annuler
+                        </button>
+
+                        <button
+                            type="button"
+                            className="btn btn-error"
+                            onClick={confirmRemoveMember}
+                            disabled={!pendingRemoval || isSubmittingSensitiveAction}
+                        >
+                            Retirer du projet
+                        </button>
+                    </div>
+                </div>
+            </dialog>
         </Wrapper>
     );
 };

@@ -22,6 +22,7 @@ import {
     updateTaskStatusSchema,
 } from "@/lib/validations";
 import { TASK_STATUSES, TASK_STATUS_VALUES } from "@/lib/task-status";
+import { sendTaskAssignmentEmail } from "@/lib/email";
 
 const ALLOWED_TASK_STATUSES = TASK_STATUS_VALUES;
 
@@ -462,6 +463,8 @@ export async function createTask(
     const { user } = await assertProjectMember(parsed.projectId);
 
     let assignedUserId: string | null = user.id;
+    let assignedUserEmail: string | null = user.email;
+    let assignedUserName: string | null = user.name;
 
     if (parsed.assignToEmail) {
         const assignedUser = await prisma.user.findUnique({
@@ -488,6 +491,8 @@ export async function createTask(
         }
 
         assignedUserId = assignedUser.id;
+        assignedUserEmail = assignedUser.email;
+        assignedUserName = assignedUser.name;
     }
 
     const newTask = await prisma.task.create({
@@ -500,6 +505,35 @@ export async function createTask(
             userId: assignedUserId,
         },
     });
+
+    try {
+        if (
+            assignedUserEmail &&
+            assignedUserId &&
+            assignedUserId !== user.id
+        ) {
+            const project = await prisma.project.findUnique({
+                where: { id: parsed.projectId },
+                select: {
+                    id: true,
+                    name: true,
+                },
+            });
+
+            if (project) {
+                await sendTaskAssignmentEmail({
+                    to: assignedUserEmail,
+                    assigneeName: assignedUserName,
+                    projectName: project.name,
+                    projectId: project.id,
+                    taskName: newTask.name,
+                    dueDate: newTask.dueDate,
+                });
+            }
+        }
+    } catch (error) {
+        console.error("Erreur lors de l'envoi de l'email d'assignation :", error);
+    }
 
     return newTask;
 }

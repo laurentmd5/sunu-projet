@@ -1,9 +1,23 @@
 import { Project as PrismaProject, Task as PrismaTask, User } from '@prisma/client';
 
-// Fusion du type PrismaProject avec vos propriétés supplémentaires
+export type ProjectRole = "OWNER" | "MANAGER" | "MEMBER";
+
+export type ProjectUserMember = {
+    id: string;
+    projectId: string;
+    userId: string;
+    role: ProjectRole;
+    user: {
+        id: string;
+        name: string | null;
+        email: string;
+    };
+};
+
 export type Project = PrismaProject & {
     totalTasks?: number;
     collaboratorsCount?: number;
+
     taskStats?: {
         toDo: number;
         inProgress: number;
@@ -14,12 +28,12 @@ export type Project = PrismaProject & {
         inProgressPercentage: number;
         toDoPercentage: number;
     };
-    tasks?: Task[]; // Assurez-vous que la relation tasks est incluse
+    tasks?: Task[];
     users?: User[];
-    createdBy?: User,
+    createdBy?: User;
 };
 
 export type Task = PrismaTask & {
     user?: User | null;
     createdBy?: User | null;
-}
+};

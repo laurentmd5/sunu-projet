@@ -47,6 +47,19 @@ export async function checkAndAddUser(email: string, name: string) {
         } else {
             console.log("Utilisateur déjà présent dans la base de données.");
         }
+
+        if (name && existingUser?.name !== name) {
+            await prisma.user.update({
+                where: {
+                    email: email,
+                },
+                data: {
+                    name: name,
+                },
+            });
+            console.log("Nom de l'utilisateur mis à jour.");
+        }
+
     } catch (error) {
         console.error("Erreur lors de la vérification de l'utilisateur :", error);
     }

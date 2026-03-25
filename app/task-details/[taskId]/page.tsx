@@ -1,15 +1,16 @@
 "use client"
-import { getProjectInfo, getTaskDetails, updateTaskStatus } from '@/app/actions'
+import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskStatus } from '@/app/actions'
 import EmptyState from '@/app/components/EmptyState'
 import UserInfo from '@/app/components/UserInfo'
 import Wrapper from '@/app/components/Wrapper'
-import { Project, Task } from '@/type'
+import { Project, ProjectRole, ProjectUserMember, Task } from '@/type'
 import Link from 'next/link'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import ReactQuill from 'react-quill-new'
 import { toast } from 'react-toastify'
 import 'react-quill-new/dist/quill.snow.css';
 import { useUser } from '@clerk/nextjs'
+import { TASK_STATUSES } from '@/lib/task-status'
 
 const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
@@ -18,8 +19,8 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
     const [task, setTask] = useState<Task | null>(null)
     const [taskId, setTaskId] = useState<string>("")
-    const [projectId, setProjectId] = useState("")
     const [project, setProject] = useState<Project | null>(null);
+    const [members, setMembers] = useState<ProjectUserMember[]>([]);
     const [status, setStatus] = useState("")
     const [solution, setSolution] = useState("")
     const [realStatus, setRealStatus] = useState("")
@@ -43,7 +44,8 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             setTask(task)
             setStatus(task.status)
             setRealStatus(task.status)
-            fetchProject(task.projectId)
+            await fetchProject(task.projectId)
+            await fetchMembers(task.projectId)
         } catch (error) {
             toast.error("Erreur lors du chargement des détails de la tâche.")
         }
@@ -57,6 +59,15 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
         }
     }
+
+    const fetchMembers = async (projectId: string) => {
+        try {
+            const projectMembers = await getProjectMembersWithRoles(projectId);
+            setMembers(projectMembers as ProjectUserMember[]);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        }
+    };
 
     useEffect(() => {
         const getId = async () => {
@@ -76,17 +87,30 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         }
     }
 
+    const currentMembership = useMemo(() => {
+        if (!email) return null;
+        return members.find((member) => member.user.email === email) || null;
+    }, [members, email]);
+
+    const currentUserRole: ProjectRole | null = currentMembership?.role ?? null;
+
+    const canUpdateStatus = !!task && (
+        task.user?.email === email ||
+        task.createdBy?.email === email ||
+        currentUserRole === "OWNER"
+    );
+
     const handleStatusChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         const newStatus = event.target.value;
         setStatus(newStatus)
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
 
-        if (newStatus == "To Do" || newStatus == "In Progress") {
+        if (newStatus === TASK_STATUSES.TODO || newStatus === TASK_STATUSES.IN_PROGRESS) {
             changeStatus(taskId, newStatus)
             toast.success('Status changé')
-            modal.close()
+            modal?.close()
         } else {
-            modal.showModal()
+            modal?.showModal()
         }
     }
 
@@ -114,10 +138,11 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         () => {
             const modal = document.getElementById('my_modal_3') as HTMLDialogElement
             const handleClose = () => {
-                if (status === "Done" && status !== realStatus) {
+                if (status === TASK_STATUSES.DONE && status !== realStatus) {
                     setStatus(realStatus)
                 }
             }
+
             if (modal) {
                 modal.addEventListener('close', handleClose)
             }
@@ -166,19 +191,24 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                 {task?.dueDate?.toLocaleDateString()}
                             </div>
                         </span>
-                        <div>
+                        <div className="flex flex-col items-end gap-2">
+                            {!canUpdateStatus && (
+                                <span className="text-xs opacity-70">
+                                    Seuls l’assigné, le créateur de la tâche ou le propriétaire du projet
+                                    peuvent modifier le statut.
+                                </span>
+                            )}
                             <select
                                 value={status}
                                 onChange={handleStatusChange}
                                 className='select select-sm select-bordered select-primary focus:outline-none ml-3'
-                                disabled={status == "Done" || task.user?.email !== email}
+                                disabled={status === TASK_STATUSES.DONE || !canUpdateStatus}
                             >
-                                <option value="To Do">À faire</option>
-                                <option value="In Progress">En cours</option>
-                                <option value="Done">Terminée</option>
+                                <option value={TASK_STATUSES.TODO}>À faire</option>
+                                <option value={TASK_STATUSES.IN_PROGRESS}>En cours</option>
+                                <option value={TASK_STATUSES.DONE}>Terminée</option>
                             </select>
                         </div>
-
                     </div>
 
                     <div>

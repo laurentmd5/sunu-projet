@@ -3,21 +3,20 @@ import React, { FC } from "react";
 import UserInfo from "./UserInfo";
 import Link from "next/link";
 import { ArrowRight, Trash } from "lucide-react";
+import { TASK_STATUS_LABELS, TASK_STATUSES } from "@/lib/task-status";
 
 interface TaskProps {
-    task: Task
-    index: number
-    email?: string
-    onDelete?: (id: string) => void
+    task: Task;
+    index: number;
+    canDelete?: boolean;
+    onDelete?: (id: string) => void;
 }
 
-const TaskComponent: FC<TaskProps> = ({ task, index, email, onDelete }) => {
-
-    const canDelete = email == task.createdBy?.email
+const TaskComponent: FC<TaskProps> = ({ task, index, canDelete = false, onDelete }) => {
 
     const handleDeleteClick = () => {
-        if (onDelete){
-            onDelete(task.id)
+        if (onDelete) {
+            onDelete(task.id);
         }
     }
 
@@ -29,14 +28,14 @@ const TaskComponent: FC<TaskProps> = ({ task, index, email, onDelete }) => {
             <td>
                 <div className="flex flex-col">
                     <div className={`badge text-xd mb-2 font-semibold
-                    ${task.status == "To Do" ? "bg-red-200 font-semibold" : ""}
-                    ${task.status == "In Progress" ? "bg-yellow-200 font-semibold" : ""}
-                    ${task.status == "Done" ? "bg-green-200 font-semibold" : ""}
+                    ${task.status === TASK_STATUSES.TODO ? "bg-red-200 font-semibold" : ""}
+                    ${task.status === TASK_STATUSES.IN_PROGRESS ? "bg-yellow-200 font-semibold" : ""}
+                    ${task.status === TASK_STATUSES.DONE ? "bg-green-200 font-semibold" : ""}
                     `}>
 
-                        {task.status == "To Do" && "À faire"}
-                        {task.status == "In Progress" && "En cours"}
-                        {task.status == "Done" && "Terminée"}
+                        {task.status in TASK_STATUS_LABELS
+                            ? TASK_STATUS_LABELS[task.status as keyof typeof TASK_STATUS_LABELS]
+                            : task.status}
 
                     </div>
 
@@ -70,7 +69,7 @@ const TaskComponent: FC<TaskProps> = ({ task, index, email, onDelete }) => {
                     </Link>
                     {canDelete && (
                         <button className="btn btn-sm ml-2" onClick={handleDeleteClick}>
-                            <Trash className="w-4"/>
+                            <Trash className="w-4" />
 
                         </button>
                     )}

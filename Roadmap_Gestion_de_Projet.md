@@ -1,234 +1,285 @@
-# Roadmap d’évolution — App Gestion de Projets
+# Roadmap mise à jour — App Gestion de Projets
 
-## Contexte
-Le projet actuel constitue une base fonctionnelle de gestion de projets et de tâches construite avec Next.js App Router, TypeScript, Clerk, Prisma et SQLite. Il permet déjà de créer des projets, rejoindre un projet via un code d’invitation, afficher les projets personnels et collaboratifs, créer des tâches, consulter un projet et mettre à jour le statut d’une tâche.
+## Contexte actuel
 
-L’objectif de cette roadmap est de transformer cette base clonée puis validée comme point de départ en une application plus robuste, plus maintenable et plus différenciante.
+L’application dispose désormais d’un socle fonctionnel plus solide :
 
----
+- authentification Clerk opérationnelle ;
+- création de projet ;
+- jointure à un projet par code d’invitation ;
+- affichage des projets créés et des collaborations ;
+- gestion des tâches ;
+- page détail projet ;
+- page détail tâche ;
+- changement de statut des tâches ;
+- rôles collaborateurs par projet (`OWNER`, `MANAGER`, `MEMBER`) ;
+- contrôles d’accès côté serveur ;
+- gestion des membres d’un projet ;
+- sécurisation UI des actions sensibles ;
+- base PostgreSQL opérationnelle en développement local.
 
-## Vision
-Faire évoluer l’application d’une **V1 inspirée d’un tutoriel** vers une **application de stage crédible**, avec :
-- une logique métier mieux sécurisée ;
-- une UX plus claire et plus mobile-friendly ;
-- une structure de code plus propre ;
-- des fonctionnalités qui la différencient d’un simple clone.
-
----
-
-## Axe 1 — Sécuriser et fiabiliser l’existant
-### Objectif
-Rendre l’application plus sûre et plus stable avant d’ajouter des fonctionnalités visibles.
-
-### Travaux recommandés
-- Ajouter des vérifications d’autorisation sur toutes les server actions sensibles :
-  - suppression de projet ;
-  - suppression de tâche ;
-  - création de tâche ;
-  - accès au détail projet ;
-  - changement de statut.
-- Vérifier l’appartenance au projet avant lecture ou modification des données.
-- Ajouter une validation des entrées côté serveur (Zod ou logique équivalente) pour :
-  - nom/description de projet ;
-  - code d’invitation ;
-  - création de tâche ;
-  - statut de tâche ;
-  - description de solution.
-- Remplacer les `throw new Error` trop génériques par des erreurs compréhensibles.
-- Centraliser les messages d’erreur et de succès.
-
-### Résultat attendu
-Une base plus fiable, plus propre à démontrer et moins fragile en cas de mauvais usage.
+L’objectif n’est plus de construire seulement une base technique, mais de faire évoluer l’application vers un outil réellement exploitable en équipe.
 
 ---
 
-## Axe 2 — Améliorer le cœur métier des tâches
-### Objectif
-Rendre la gestion des tâches plus utile et plus proche d’un vrai outil de suivi.
+## Priorité 1 — Rendre l’application plus utile au quotidien
 
-### Travaux recommandés
-- Ajouter un champ `priority` sur les tâches :
+### 1. Notifications email lors de l’assignation d’une tâche
+**Objectif**  
+Informer automatiquement un membre lorsqu’une nouvelle tâche lui est attribuée.
+
+**Travaux à prévoir**
+- envoyer un email lors de la création d’une tâche assignée à un utilisateur ;
+- inclure dans l’email :
+  - le nom du projet ;
+  - le nom de la tâche ;
+  - la date limite si elle existe ;
+  - un lien vers la tâche ou le projet ;
+- définir une règle métier claire si la tâche est assignée à son propre créateur ;
+- préparer une base réutilisable pour de futurs emails métier.
+
+**Résultat attendu**  
+Une meilleure réactivité des collaborateurs et une fonctionnalité immédiatement utile en usage réel.
+
+---
+
+### 2. Gestion métier plus complète des tâches
+**Objectif**  
+Rendre le suivi des tâches plus réaliste et plus lisible.
+
+**Travaux à prévoir**
+- ajouter une priorité sur les tâches :
   - basse ;
   - moyenne ;
-  - haute.
-- Remplacer les statuts texte libres par un système centralisé :
-  - `TODO` ;
-  - `IN_PROGRESS` ;
-  - `DONE`.
-- Améliorer la gestion des échéances :
-  - tâche en retard ;
-  - tâche due aujourd’hui ;
-  - tâche bientôt à échéance.
-- Ajouter des badges visuels pour statut, priorité et retard.
-- Ajouter recherche et tri sur la page projet :
-  - par statut ;
+  - haute ;
+- afficher des badges de priorité dans les listes et les détails ;
+- améliorer la gestion des échéances :
+  - en retard ;
+  - à faire aujourd’hui ;
+  - bientôt à échéance ;
+- enrichir les filtres :
   - par priorité ;
+  - par statut ;
+  - par assigné ;
   - par date limite ;
-  - par nom.
+- ajouter une recherche par nom de tâche.
 
-### Résultat attendu
-Une page projet plus utile au quotidien, avec une vraie lecture de l’urgence et de l’avancement.
-
----
-
-## Axe 3 — Renforcer la collaboration
-### Objectif
-Passer d’un simple partage de projet à une vraie logique de collaboration.
-
-### Travaux recommandés
-- Ajouter un rôle au niveau `ProjectUser` :
-  - owner ;
-  - manager ;
-  - member.
-- Définir les droits par rôle :
-  - owner : administration complète du projet ;
-  - manager : gestion opérationnelle des tâches ;
-  - member : travail sur les tâches autorisées.
-- Ajouter une vue membres du projet :
-  - liste des membres ;
-  - rôle ;
-  - possibilité de retirer un membre ;
-  - possibilité de changer un rôle.
-- Ajouter régénération du code d’invitation.
-- Éviter les doublons et mieux gérer les cas “déjà membre”.
-
-### Résultat attendu
-Une collaboration plus crédible et plus facilement défendable devant un responsable métier.
+**Résultat attendu**  
+Une page projet plus utile au quotidien et mieux adaptée au pilotage.
 
 ---
 
-## Axe 4 — Repenser l’expérience utilisateur
-### Objectif
-Améliorer la lisibilité et l’ergonomie, surtout côté mobile.
+### 3. Historique d’activité du projet
+**Objectif**  
+Donner de la traçabilité sur les actions importantes d’un projet.
 
-### Travaux recommandés
-- Améliorer le dashboard “Mes projets” :
-  - cartes de synthèse ;
-  - nombre de projets actifs ;
-  - nombre de tâches en retard ;
-  - tâches assignées à l’utilisateur.
-- Améliorer la page “Collaborations” :
-  - meilleure explication du flux de jointure ;
-  - meilleur feedback après ajout.
-- Revoir les modales aujourd’hui manipulées via `document.getElementById(...)` et les remplacer par une gestion via state React.
-- Uniformiser les composants de cartes, badges, boutons et états vides.
-- Ajouter de meilleurs feedbacks : loaders, toasts, confirmations, empty states.
-- Vérifier et corriger le comportement responsive sur mobile.
+**Travaux à prévoir**
+- journaliser :
+  - création de projet ;
+  - création de tâche ;
+  - changement de statut ;
+  - ajout ou retrait d’un membre ;
+  - changement de rôle ;
+- créer une section “Activité récente” sur la page projet ;
+- stocker :
+  - l’acteur ;
+  - l’action ;
+  - la cible ;
+  - la date.
 
-### Résultat attendu
-Une app plus agréable à utiliser et plus propre visuellement, sans dépendre uniquement du style du tutoriel.
-
----
-
-## Axe 5 — Refactoriser la structure du code
-### Objectif
-Sortir progressivement de la structure “monolithique de tutoriel”.
-
-### Travaux recommandés
-- Découper `app/actions.ts` en modules :
-  - `actions/projects.ts` ;
-  - `actions/tasks.ts` ;
-  - `actions/members.ts` ;
-  - `actions/users.ts`.
-- Créer des types partagés plus propres.
-- Réduire l’usage de `any`.
-- Extraire les constantes métier :
-  - statuts ;
-  - priorités ;
-  - labels ;
-  - messages.
-- Réduire la logique directement embarquée dans certaines pages client.
-- Préparer une couche de services métier si l’application grossit.
-
-### Résultat attendu
-Un projet plus lisible, plus maintenable et plus simple à expliquer techniquement.
+**Résultat attendu**  
+Une meilleure visibilité sur l’évolution du projet et une base pour de futures notifications.
 
 ---
 
-## Axe 6 — Ajouter une ou deux fonctionnalités différenciantes
-### Objectif
-Donner au projet une identité propre.
+## Priorité 2 — Renforcer la collaboration
 
-### Options à forte valeur
-#### Option A — Vue Kanban
-- colonnes par statut ;
-- déplacement visuel des tâches ;
-- lecture immédiate de l’avancement.
+### 4. Réunions et comptes-rendus écrits
+**Objectif**  
+Permettre un suivi structuré des échanges d’équipe, même avant l’intégration de la vidéo.
 
-#### Option B — Historique d’activité
-- création de projet ;
-- création de tâche ;
-- changement de statut ;
-- ajout/retrait de membre.
+**Travaux à prévoir**
+- ajouter une page ou section “Réunions” ;
+- permettre de créer une réunion liée à un projet ;
+- enregistrer :
+  - la date ;
+  - le titre ;
+  - les participants ;
+  - le résumé / PV ;
+  - les décisions prises ;
+  - les actions à suivre ;
+- afficher l’historique des réunions du projet.
 
-#### Option C — Commentaires sur les tâches
-- fil de discussion par tâche ;
-- meilleure collaboration ;
-- traçabilité métier.
-
-#### Option D — Vue calendrier
-- visualisation des échéances ;
-- repérage rapide des urgences.
-
-### Résultat attendu
-Une application qui ne ressemble plus à une reproduction directe du tutoriel d’origine.
+**Résultat attendu**  
+Une collaboration plus professionnelle, avec mémoire écrite des échanges.
 
 ---
 
-## Priorisation recommandée
-### Priorité immédiate
-1. Autorisations et sécurité métier.
-2. Validation des entrées.
-3. Nettoyage des erreurs.
-4. Centralisation des statuts.
+### 5. Commentaires sur les tâches
+**Objectif**  
+Faciliter les échanges directement au niveau des tâches.
 
-### Priorité court terme
-5. Priorité et retard sur les tâches.
-6. Recherche, tri et filtres.
-7. Amélioration de la page détail tâche.
-8. Dashboard plus utile.
+**Travaux à prévoir**
+- ajouter un fil de discussion simple par tâche ;
+- afficher l’auteur, la date et le message ;
+- intégrer les commentaires dans la page détail tâche ;
+- respecter les permissions d’accès à la tâche.
 
-### Priorité moyen terme
-9. Rôles projet.
-10. Gestion des membres.
-11. Refactorisation des server actions.
-12. Fonctionnalité différenciante.
+**Résultat attendu**  
+Une meilleure communication opérationnelle sans sortir de l’application.
 
 ---
 
-## Proposition de découpage en sprints
-### Sprint 1 — Sécurisation
-- contrôle d’accès ;
-- validation ;
-- erreurs ;
-- nettoyage des statuts.
+### 6. Amélioration du flux de collaboration
+**Objectif**  
+Rendre le travail collaboratif plus fluide.
 
-### Sprint 2 — Tâches
-- priorité ;
-- échéances ;
-- retards ;
-- recherche/tri.
+**Travaux à prévoir**
+- permettre la régénération du code d’invitation ;
+- améliorer l’UX de la page “Collaborations” ;
+- clarifier les retours utilisateur lors de la jointure ;
+- prévenir les doublons et les cas limites ;
+- afficher le rôle courant de l’utilisateur dans plus d’endroits stratégiques.
 
-### Sprint 3 — Collaboration
-- rôles ;
-- gestion des membres ;
-- amélioration des invitations.
-
-### Sprint 4 — UX et structure
-- dashboard ;
-- responsive ;
-- refactor actions/composants.
-
-### Sprint 5 — Différenciation
-- Kanban, activité, commentaires ou calendrier.
+**Résultat attendu**  
+Une expérience plus propre côté membres, invitations et accès.
 
 ---
 
-## Résumé stratégique
-La base actuelle est bonne pour démarrer vite. La suite ne doit pas consister à “refaire le tutoriel mieux”, mais à :
-- sécuriser ;
-- fiabiliser ;
-- clarifier l’expérience ;
-- ajouter des règles métier et des fonctionnalités propres au contexte réel.
+## Priorité 3 — Structurer le produit pour la suite
 
-C’est cette évolution qui transformera le projet en vraie application de stage.
+### 7. Gestion des équipes / espaces de travail
+**Objectif**  
+Passer d’une logique centrée uniquement sur le projet à une logique d’équipe.
+
+**Travaux à prévoir**
+- créer une entité `Team` ;
+- créer une relation `TeamMember` ;
+- rattacher les projets à une équipe ;
+- permettre à plusieurs membres de collaborer dans une même équipe ;
+- préparer une hiérarchie :
+  - propriétaire d’équipe ;
+  - manager d’équipe ;
+  - membre ;
+- adapter les permissions au niveau équipe.
+
+**Résultat attendu**  
+Une structuration multi-projets plus proche d’un usage en entreprise.
+
+---
+
+### 8. Préparer la future brique visioconférence
+**Objectif**  
+Préparer le terrain pour la demande du directeur sans implémenter trop tôt une brique lourde.
+
+**Travaux à prévoir**
+- concevoir la place future des réunions vidéo dans le modèle ;
+- prévoir le lien entre :
+  - projet ;
+  - réunion ;
+  - compte-rendu ;
+  - enregistrement ;
+- garder une architecture compatible avec une future intégration externe.
+
+**Résultat attendu**  
+Une base prête pour la visioconférence et l’enregistrement plus tard, sans bloquer l’avancement actuel.
+
+---
+
+## Priorité 4 — Améliorer l’expérience utilisateur
+
+### 9. Dashboard plus utile
+**Objectif**  
+Donner une vraie vue d’ensemble à l’utilisateur.
+
+**Travaux à prévoir**
+- afficher les projets actifs ;
+- afficher les tâches assignées ;
+- afficher les tâches en retard ;
+- afficher les tâches terminées récemment ;
+- afficher une activité récente synthétique.
+
+**Résultat attendu**  
+Une page d’accueil plus informative et moins “liste brute”.
+
+---
+
+### 10. Uniformisation UI et suppression du legacy tutoriel
+**Objectif**  
+Rendre l’interface plus cohérente et plus maintenable.
+
+**Travaux à prévoir**
+- réduire l’usage de `document.getElementById(...)` au profit du state React ;
+- harmoniser cartes, modales, badges et boutons ;
+- améliorer les loaders, empty states et confirmations ;
+- poursuivre les vérifications responsive mobile.
+
+**Résultat attendu**  
+Une application plus propre visuellement et plus stable côté front.
+
+---
+
+## Priorité 5 — Refactorisation technique
+
+### 11. Découpage de `app/actions.ts`
+**Objectif**  
+Sortir de la logique monolithique actuelle.
+
+**Travaux à prévoir**
+- séparer :
+  - `actions/projects.ts`
+  - `actions/tasks.ts`
+  - `actions/members.ts`
+  - `actions/users.ts`
+  - puis plus tard `actions/meetings.ts`
+- centraliser les messages métier ;
+- améliorer les types partagés ;
+- réduire les `any`.
+
+**Résultat attendu**  
+Un code plus lisible, plus maintenable et plus simple à faire évoluer.
+
+---
+
+### 12. Stabilisation environnement / déploiement
+**Objectif**  
+Préparer une utilisation plus régulière de l’application.
+
+**Travaux à prévoir**
+- fiabiliser le setup Docker/PostgreSQL ;
+- clarifier les variables d’environnement ;
+- documenter précisément le workflow de lancement ;
+- préparer une future cible de déploiement simple.
+
+**Résultat attendu**  
+Un projet plus facile à relancer, partager et maintenir.
+
+---
+
+# Priorisation recommandée
+
+## Priorité immédiate
+1. Notifications email à l’assignation d’une tâche  
+2. Gestion métier plus complète des tâches  
+3. Historique d’activité du projet  
+
+## Priorité court terme
+4. Réunions / PV écrits  
+5. Commentaires sur les tâches  
+6. Amélioration du dashboard  
+7. Refactorisation de `app/actions.ts`
+
+## Priorité moyen terme
+8. Gestion des équipes / espaces de travail  
+9. Préparation de la future visioconférence  
+10. Stabilisation plus poussée pour usage d’équipe
+
+---
+
+# Prochain enchaînement recommandé
+
+1. Notifications email lorsqu’une tâche est assignée  
+2. Historique d’activité du projet  
+3. Page de réunions avec PV / résumés écrits  
+
+Cet enchaînement apporte rapidement de la valeur métier, améliore la collaboration et reste réaliste par rapport à l’état actuel du projet.

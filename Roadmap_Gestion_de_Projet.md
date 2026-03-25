@@ -1,8 +1,8 @@
 # Roadmap mise à jour — App Gestion de Projets
 
-## Contexte actuel
+## État actuel du projet
 
-L’application dispose désormais d’un socle fonctionnel plus solide :
+L’application a dépassé le stade de simple clone technique et dispose désormais d’un socle fonctionnel exploitable :
 
 - authentification Clerk opérationnelle ;
 - création de projet ;
@@ -16,11 +16,51 @@ L’application dispose désormais d’un socle fonctionnel plus solide :
 - contrôles d’accès côté serveur ;
 - gestion des membres d’un projet ;
 - sécurisation UI des actions sensibles ;
-- base PostgreSQL opérationnelle en développement local.
+- migration de la base de données vers PostgreSQL en environnement local ;
+- mise en place d’un démarrage simplifié de la base via Docker.
 
-L’objectif n’est plus de construire seulement une base technique, mais de faire évoluer l’application vers un outil réellement exploitable en équipe.
+L’objectif n’est plus uniquement de stabiliser la base technique, mais de faire évoluer l’application vers un outil réellement utile pour une équipe.
 
 ---
+
+## Terminé récemment
+
+### Gestion des rôles et permissions
+- ajout des rôles collaborateurs par projet (`OWNER`, `MANAGER`, `MEMBER`) ;
+- attribution automatique des rôles :
+  - créateur du projet → `OWNER`
+  - utilisateur rejoignant un projet → `MEMBER`
+- création d’helpers de permissions et de rôles côté serveur ;
+- contrôles d’accès serveur sur les actions projet et tâche.
+
+### Gestion des membres
+- récupération des membres d’un projet avec leur rôle ;
+- modification du rôle d’un collaborateur ;
+- retrait d’un collaborateur ;
+- affichage d’une section “Membres du projet” dans la page détail projet ;
+- hiérarchisation visuelle des membres par rôle.
+
+### Sécurisation des actions sensibles
+- ajout de confirmations explicites pour les actions sensibles ;
+- amélioration de la sécurité UI pour :
+  - suppression de projet ;
+  - changement de rôle ;
+  - retrait d’un collaborateur.
+
+### Fiabilisation métier
+- validation serveur avec Zod sur les actions principales ;
+- centralisation des statuts de tâches dans un fichier dédié ;
+- correction du bug d’ajout automatique d’un utilisateur Clerk sans `fullName`.
+
+### Base de données et environnement
+- abandon de SQLite comme base principale de développement ;
+- mise en place de PostgreSQL en local ;
+- compatibilité Prisma avec PostgreSQL ;
+- documentation et setup Docker mis à jour.
+
+---
+
+# Roadmap à venir
 
 ## Priorité 1 — Rendre l’application plus utile au quotidien
 

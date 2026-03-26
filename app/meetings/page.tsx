@@ -18,6 +18,7 @@ import {
     FolderPlus,
     Link2,
     UsersRound,
+    Video,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import Link from "next/link";
@@ -410,6 +411,13 @@ const page = () => {
                                                         <Link2 className="w-4 h-4" />
                                                         Lien de réunion
                                                     </a>
+                                                ) : null}
+
+                                                {meeting.provider === "JITSI" ? (
+                                                    <p className="flex items-center gap-2 text-sm opacity-75">
+                                                        <Video className="w-4 h-4" />
+                                                        Salle Jitsi configurée
+                                                    </p>
                                                 ) : null}
                                             </div>
                                         </div>

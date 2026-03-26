@@ -3,19 +3,22 @@
 import React, { useEffect, useState } from "react";
 import Wrapper from "@/app/components/Wrapper";
 import {
+    generateJitsiMeetingLink,
     getMeetingDetails,
     updateMeetingNotes,
     updateMeetingStatus,
 } from "@/app/actions";
 import { TeamMeeting } from "@/type";
 import {
+    ArrowLeft,
     CalendarDays,
     CheckCircle2,
+    Copy,
     FileText,
     FolderKanban,
     Link2,
+    Video,
     UsersRound,
-    ArrowLeft,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import Link from "next/link";
@@ -32,6 +35,11 @@ const STATUS_BADGE_CLASS = {
     CANCELLED: "badge-error",
 } as const;
 
+const PROVIDER_LABELS = {
+    NONE: "Aucune visio",
+    JITSI: "Jitsi",
+} as const;
+
 const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const [meetingId, setMeetingId] = useState("");
     const [meeting, setMeeting] = useState<TeamMeeting | null>(null);
@@ -39,6 +47,7 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const [loading, setLoading] = useState(true);
     const [savingNotes, setSavingNotes] = useState(false);
     const [savingStatus, setSavingStatus] = useState(false);
+    const [generatingJitsi, setGeneratingJitsi] = useState(false);
 
     const fetchMeeting = async (id: string) => {
         try {
@@ -107,6 +116,36 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
         }
     };
 
+    const handleGenerateJitsi = async () => {
+        if (!meetingId) return;
+
+        try {
+            setGeneratingJitsi(true);
+            await generateJitsiMeetingLink(meetingId);
+            await fetchMeeting(meetingId);
+            toast.success("Lien Jitsi généré avec succès.");
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Erreur lors de la génération du lien Jitsi."
+            );
+        } finally {
+            setGeneratingJitsi(false);
+        }
+    };
+
+    const handleCopyLink = async () => {
+        if (!meeting?.externalUrl) return;
+
+        try {
+            await navigator.clipboard.writeText(meeting.externalUrl);
+            toast.success("Lien copié dans le presse-papiers.");
+        } catch (error) {
+            toast.error("Impossible de copier le lien.");
+        }
+    };
+
     if (loading) {
         return (
             <Wrapper>
@@ -140,8 +179,16 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                         <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                                 <h1 className="text-2xl font-bold break-words">{meeting.title}</h1>
-                                <span className={`badge ${STATUS_BADGE_CLASS[meeting.status as keyof typeof STATUS_BADGE_CLASS]}`}>
-                                    {STATUS_LABELS[meeting.status as keyof typeof STATUS_LABELS]}
+                                <span
+                                    className={`badge ${
+                                        STATUS_BADGE_CLASS[
+                                            meeting.status as keyof typeof STATUS_BADGE_CLASS
+                                        ]
+                                    }`}
+                                >
+                                    {STATUS_LABELS[
+                                        meeting.status as keyof typeof STATUS_LABELS
+                                    ]}
                                 </span>
                             </div>
 
@@ -167,18 +214,6 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                     <p className="text-sm opacity-75">
                                         Durée prévue : {meeting.durationMinutes} min
                                     </p>
-                                ) : null}
-
-                                {meeting.externalUrl ? (
-                                    <a
-                                        href={meeting.externalUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="flex items-center gap-2 link link-primary break-all"
-                                    >
-                                        <Link2 className="w-4 h-4" />
-                                        Ouvrir le lien de réunion
-                                    </a>
                                 ) : null}
                             </div>
                         </div>
@@ -208,6 +243,78 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                         <p className="text-sm break-words">{meeting.description}</p>
                     </div>
                 ) : null}
+
+                <div className="rounded-xl border border-base-300 p-4 md:p-5 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Video className="w-4 h-4" />
+                        <h2 className="text-lg font-semibold">Visioconférence</h2>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-2 text-sm opacity-80">
+                            <span className="font-medium">Provider :</span>
+                            <span className="badge badge-outline">
+                                {PROVIDER_LABELS[
+                                    (meeting.provider || "NONE") as keyof typeof PROVIDER_LABELS
+                                ]}
+                            </span>
+                        </div>
+
+                        {meeting.externalUrl ? (
+                            <>
+                                <div className="rounded-lg border border-base-300 p-3">
+                                    <p className="text-sm opacity-70 mb-2">Lien de réunion</p>
+                                    <a
+                                        href={meeting.externalUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center gap-2 link link-primary break-all"
+                                    >
+                                        <Link2 className="w-4 h-4" />
+                                        {meeting.externalUrl}
+                                    </a>
+                                </div>
+
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                    <a
+                                        href={meeting.externalUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="btn btn-primary w-full sm:w-auto"
+                                    >
+                                        <Video className="w-4 h-4" />
+                                        Ouvrir la visio
+                                    </a>
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline w-full sm:w-auto"
+                                        onClick={handleCopyLink}
+                                    >
+                                        <Copy className="w-4 h-4" />
+                                        Copier le lien
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="space-y-3">
+                                <p className="text-sm opacity-70">
+                                    Aucun lien de visioconférence n’est encore associé à cette réunion.
+                                </p>
+
+                                <button
+                                    type="button"
+                                    className="btn btn-primary w-full sm:w-auto"
+                                    onClick={handleGenerateJitsi}
+                                    disabled={generatingJitsi}
+                                >
+                                    <Video className="w-4 h-4" />
+                                    Créer un lien Jitsi
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
                 <div className="rounded-xl border border-base-300 p-4 md:p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-3">

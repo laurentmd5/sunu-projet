@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { ActionError, getCurrentDbUser } from "@/lib/permissions";
@@ -60,6 +61,23 @@ function normalizeOptionalString(value?: string | null) {
     if (!value) return null;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+}
+
+function slugify(value: string) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40);
+}
+
+function buildJitsiRoomName(meetingTitle: string, meetingId: string) {
+    const base = slugify(meetingTitle) || "meeting";
+    const suffix = randomBytes(3).toString("hex");
+    const shortId = meetingId.replace(/-/g, "").slice(0, 8);
+    return `sunu-projets-${base}-${shortId}-${suffix}`;
 }
 
 export async function createMeeting(input: {
@@ -268,6 +286,7 @@ export async function updateMeetingNotes(meetingId: string, notes: string) {
 
     revalidatePath("/meetings");
     revalidatePath(`/teams/${meeting.teamId}`);
+    revalidatePath(`/meetings/${parsed.meetingId}`);
 
     return updatedMeeting;
 }
@@ -306,6 +325,64 @@ export async function updateMeetingStatus(
 
     revalidatePath("/meetings");
     revalidatePath(`/teams/${meeting.teamId}`);
+    revalidatePath(`/meetings/${parsed.meetingId}`);
 
     return updatedMeeting;
+}
+
+export async function generateJitsiMeetingLink(meetingId: string) {
+    const user = await getCurrentDbUser();
+
+    const meeting = await prisma.teamMeeting.findUnique({
+        where: { id: meetingId },
+        select: {
+            id: true,
+            title: true,
+            teamId: true,
+            externalUrl: true,
+            provider: true,
+            createdById: true,
+        },
+    });
+
+    if (!meeting) {
+        throw new ActionError("Réunion introuvable.", 404);
+    }
+
+    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+
+    if (meeting.externalUrl && meeting.provider === "JITSI") {
+        return {
+            success: true,
+            message: "Un lien Jitsi existe déjà pour cette réunion.",
+            externalUrl: meeting.externalUrl,
+        };
+    }
+
+    const roomName = buildJitsiRoomName(meeting.title, meeting.id);
+    const externalUrl = `https://meet.jit.si/${roomName}`;
+
+    const updatedMeeting = await prisma.teamMeeting.update({
+        where: { id: meeting.id },
+        data: {
+            provider: "JITSI",
+            externalUrl,
+        },
+        include: {
+            team: true,
+            project: true,
+            createdBy: true,
+        },
+    });
+
+    revalidatePath("/meetings");
+    revalidatePath(`/meetings/${meeting.id}`);
+    revalidatePath(`/teams/${meeting.teamId}`);
+
+    return {
+        success: true,
+        message: `${user.name || user.email} a généré un lien Jitsi pour cette réunion.`,
+        meeting: updatedMeeting,
+        externalUrl,
+    };
 }

@@ -39,6 +39,7 @@ export {
     getMeetingDetails,
     updateMeetingNotes,
     updateMeetingStatus,
+    generateJitsiMeetingLink,
 } from "./meetings";
 
 // Tasks

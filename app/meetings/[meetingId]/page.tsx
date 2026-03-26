@@ -5,6 +5,8 @@ import Wrapper from "@/app/components/Wrapper";
 import {
     generateJitsiMeetingLink,
     getMeetingDetails,
+    regenerateJitsiMeetingLink,
+    removeMeetingVideoLink,
     updateMeetingNotes,
     updateMeetingStatus,
 } from "@/app/actions";
@@ -17,6 +19,8 @@ import {
     FileText,
     FolderKanban,
     Link2,
+    RefreshCw,
+    Trash2,
     Video,
     UsersRound,
 } from "lucide-react";
@@ -48,6 +52,8 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const [savingNotes, setSavingNotes] = useState(false);
     const [savingStatus, setSavingStatus] = useState(false);
     const [generatingJitsi, setGeneratingJitsi] = useState(false);
+    const [regeneratingJitsi, setRegeneratingJitsi] = useState(false);
+    const [removingVideoLink, setRemovingVideoLink] = useState(false);
 
     const fetchMeeting = async (id: string) => {
         try {
@@ -135,6 +141,44 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
         }
     };
 
+    const handleRegenerateJitsi = async () => {
+        if (!meetingId) return;
+
+        try {
+            setRegeneratingJitsi(true);
+            await regenerateJitsiMeetingLink(meetingId);
+            await fetchMeeting(meetingId);
+            toast.success("Lien Jitsi régénéré avec succès.");
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Erreur lors de la régénération du lien Jitsi."
+            );
+        } finally {
+            setRegeneratingJitsi(false);
+        }
+    };
+
+    const handleRemoveVideoLink = async () => {
+        if (!meetingId) return;
+
+        try {
+            setRemovingVideoLink(true);
+            await removeMeetingVideoLink(meetingId);
+            await fetchMeeting(meetingId);
+            toast.success("Lien de visioconférence supprimé.");
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Erreur lors de la suppression du lien de visioconférence."
+            );
+        } finally {
+            setRemovingVideoLink(false);
+        }
+    };
+
     const handleCopyLink = async () => {
         if (!meeting?.externalUrl) return;
 
@@ -165,6 +209,9 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
             </Wrapper>
         );
     }
+
+    const isCancelled = meeting.status === "CANCELLED";
+    const hasVideoLink = Boolean(meeting.externalUrl);
 
     return (
         <Wrapper>
@@ -260,12 +307,20 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                             </span>
                         </div>
 
-                        {meeting.externalUrl ? (
+                        {isCancelled && (
+                            <div className="alert alert-warning">
+                                <span>
+                                    Cette réunion est annulée. La génération ou régénération d’un lien Jitsi est désactivée.
+                                </span>
+                            </div>
+                        )}
+
+                        {hasVideoLink ? (
                             <>
                                 <div className="rounded-lg border border-base-300 p-3">
                                     <p className="text-sm opacity-70 mb-2">Lien de réunion</p>
                                     <a
-                                        href={meeting.externalUrl}
+                                        href={meeting.externalUrl!}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="flex items-center gap-2 link link-primary break-all"
@@ -275,9 +330,9 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                     </a>
                                 </div>
 
-                                <div className="flex flex-col gap-2 sm:flex-row">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                                     <a
-                                        href={meeting.externalUrl}
+                                        href={meeting.externalUrl!}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="btn btn-primary w-full sm:w-auto"
@@ -294,6 +349,26 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                         <Copy className="w-4 h-4" />
                                         Copier le lien
                                     </button>
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline w-full sm:w-auto"
+                                        onClick={handleRegenerateJitsi}
+                                        disabled={regeneratingJitsi || isCancelled}
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                        Régénérer le lien
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-error btn-outline w-full sm:w-auto"
+                                        onClick={handleRemoveVideoLink}
+                                        disabled={removingVideoLink}
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Supprimer le lien
+                                    </button>
                                 </div>
                             </>
                         ) : (
@@ -306,7 +381,7 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                     type="button"
                                     className="btn btn-primary w-full sm:w-auto"
                                     onClick={handleGenerateJitsi}
-                                    disabled={generatingJitsi}
+                                    disabled={generatingJitsi || isCancelled}
                                 >
                                     <Video className="w-4 h-4" />
                                     Créer un lien Jitsi

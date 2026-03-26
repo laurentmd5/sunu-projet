@@ -80,6 +80,34 @@ function buildJitsiRoomName(meetingTitle: string, meetingId: string) {
     return `sunu-projets-${base}-${shortId}-${suffix}`;
 }
 
+async function getMeetingForVideoManagement(meetingId: string) {
+    const meeting = await prisma.teamMeeting.findUnique({
+        where: { id: meetingId },
+        select: {
+            id: true,
+            title: true,
+            teamId: true,
+            externalUrl: true,
+            provider: true,
+            status: true,
+        },
+    });
+
+    if (!meeting) {
+        throw new ActionError("Réunion introuvable.", 404);
+    }
+
+    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+
+    return meeting;
+}
+
+function revalidateMeetingPaths(meetingId: string, teamId: string) {
+    revalidatePath("/meetings");
+    revalidatePath(`/meetings/${meetingId}`);
+    revalidatePath(`/teams/${teamId}`);
+}
+
 export async function createMeeting(input: {
     title: string;
     description?: string;
@@ -284,9 +312,7 @@ export async function updateMeetingNotes(meetingId: string, notes: string) {
         },
     });
 
-    revalidatePath("/meetings");
-    revalidatePath(`/teams/${meeting.teamId}`);
-    revalidatePath(`/meetings/${parsed.meetingId}`);
+    revalidateMeetingPaths(parsed.meetingId, meeting.teamId);
 
     return updatedMeeting;
 }
@@ -323,33 +349,20 @@ export async function updateMeetingStatus(
         },
     });
 
-    revalidatePath("/meetings");
-    revalidatePath(`/teams/${meeting.teamId}`);
-    revalidatePath(`/meetings/${parsed.meetingId}`);
+    revalidateMeetingPaths(parsed.meetingId, meeting.teamId);
 
     return updatedMeeting;
 }
 
 export async function generateJitsiMeetingLink(meetingId: string) {
-    const user = await getCurrentDbUser();
+    const meeting = await getMeetingForVideoManagement(meetingId);
 
-    const meeting = await prisma.teamMeeting.findUnique({
-        where: { id: meetingId },
-        select: {
-            id: true,
-            title: true,
-            teamId: true,
-            externalUrl: true,
-            provider: true,
-            createdById: true,
-        },
-    });
-
-    if (!meeting) {
-        throw new ActionError("Réunion introuvable.", 404);
+    if (meeting.status === "CANCELLED") {
+        throw new ActionError(
+            "Impossible de générer un lien Jitsi pour une réunion annulée.",
+            400
+        );
     }
-
-    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
 
     if (meeting.externalUrl && meeting.provider === "JITSI") {
         return {
@@ -375,14 +388,73 @@ export async function generateJitsiMeetingLink(meetingId: string) {
         },
     });
 
-    revalidatePath("/meetings");
-    revalidatePath(`/meetings/${meeting.id}`);
-    revalidatePath(`/teams/${meeting.teamId}`);
+    revalidateMeetingPaths(meeting.id, meeting.teamId);
 
     return {
         success: true,
-        message: `${user.name || user.email} a généré un lien Jitsi pour cette réunion.`,
+        message: "Lien Jitsi généré avec succès.",
         meeting: updatedMeeting,
         externalUrl,
+    };
+}
+
+export async function regenerateJitsiMeetingLink(meetingId: string) {
+    const meeting = await getMeetingForVideoManagement(meetingId);
+
+    if (meeting.status === "CANCELLED") {
+        throw new ActionError(
+            "Impossible de régénérer un lien Jitsi pour une réunion annulée.",
+            400
+        );
+    }
+
+    const roomName = buildJitsiRoomName(meeting.title, meeting.id);
+    const externalUrl = `https://meet.jit.si/${roomName}`;
+
+    const updatedMeeting = await prisma.teamMeeting.update({
+        where: { id: meeting.id },
+        data: {
+            provider: "JITSI",
+            externalUrl,
+        },
+        include: {
+            team: true,
+            project: true,
+            createdBy: true,
+        },
+    });
+
+    revalidateMeetingPaths(meeting.id, meeting.teamId);
+
+    return {
+        success: true,
+        message: "Lien Jitsi régénéré avec succès.",
+        meeting: updatedMeeting,
+        externalUrl,
+    };
+}
+
+export async function removeMeetingVideoLink(meetingId: string) {
+    const meeting = await getMeetingForVideoManagement(meetingId);
+
+    const updatedMeeting = await prisma.teamMeeting.update({
+        where: { id: meeting.id },
+        data: {
+            provider: "NONE",
+            externalUrl: null,
+        },
+        include: {
+            team: true,
+            project: true,
+            createdBy: true,
+        },
+    });
+
+    revalidateMeetingPaths(meeting.id, meeting.teamId);
+
+    return {
+        success: true,
+        message: "Lien de visioconférence supprimé avec succès.",
+        meeting: updatedMeeting,
     };
 }

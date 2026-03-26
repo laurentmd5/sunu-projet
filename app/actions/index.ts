@@ -40,6 +40,8 @@ export {
     updateMeetingNotes,
     updateMeetingStatus,
     generateJitsiMeetingLink,
+    regenerateJitsiMeetingLink,
+    removeMeetingVideoLink,
 } from "./meetings";
 
 // Tasks

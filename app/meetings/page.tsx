@@ -413,10 +413,10 @@ const page = () => {
                                                     </a>
                                                 ) : null}
 
-                                                {meeting.provider === "JITSI" ? (
+                                                {meeting.externalUrl ? (
                                                     <p className="flex items-center gap-2 text-sm opacity-75">
                                                         <Video className="w-4 h-4" />
-                                                        Salle Jitsi configurée
+                                                        {meeting.provider === "JITSI" ? "Salle Jitsi configurée" : "Lien visio configuré"}
                                                     </p>
                                                 ) : null}
                                             </div>

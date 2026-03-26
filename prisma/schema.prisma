@@ -24,6 +24,17 @@ enum ProjectCollaboratorScope {
   EXTERNAL
 }
 
+enum MeetingStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum MeetingProvider {
+  NONE
+  JITSI
+}
+
 enum ActivityType {
   PROJECT_CREATED
   MEMBER_JOINED
@@ -50,8 +61,9 @@ model User {
   userProjects ProjectUser[]
   activityLogs ActivityLog[] @relation("ActivityActor")
 
-  createdTeams Team[]       @relation("CreatedTeams")
-  teamMembers  TeamMember[]
+  createdTeams    Team[]        @relation("CreatedTeams")
+  teamMembers     TeamMember[]
+  createdMeetings TeamMeeting[] @relation("CreatedMeetings")
 }
 
 model Team {
@@ -67,6 +79,7 @@ model Team {
 
   members  TeamMember[]
   projects Project[]
+  meetings TeamMeeting[]
 }
 
 model TeamMember {
@@ -97,6 +110,8 @@ model Project {
 
   teamId String?
   team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  meetings TeamMeeting[]
 
   users        ProjectUser[]
   activityLogs ActivityLog[]
@@ -142,4 +157,30 @@ model ActivityLog {
   actor   User    @relation("ActivityActor", fields: [actorUserId], references: [id])
 
   @@index([projectId, createdAt])
+}
+
+model TeamMeeting {
+  id              String          @id @default(uuid())
+  title           String
+  description     String?
+  notes           String?
+  scheduledAt     DateTime
+  durationMinutes Int?
+  status          MeetingStatus   @default(SCHEDULED)
+  provider        MeetingProvider @default(NONE)
+  externalUrl     String?
+
+  teamId      String
+  projectId   String?
+  createdById String
+
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy User     @relation("CreatedMeetings", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId, scheduledAt])
+  @@index([projectId, scheduledAt])
 }

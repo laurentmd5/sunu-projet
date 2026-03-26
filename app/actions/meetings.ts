@@ -1,0 +1,311 @@
+"use server";
+
+import { z } from "zod";
+import prisma from "@/lib/prisma";
+import { ActionError, getCurrentDbUser } from "@/lib/permissions";
+import { assertHasTeamRole } from "@/lib/team-roles";
+import { revalidatePath } from "next/cache";
+
+const createMeetingSchema = z.object({
+    title: z
+        .string()
+        .trim()
+        .min(2, "Le titre doit contenir au moins 2 caractères.")
+        .max(120, "Le titre est trop long."),
+    description: z
+        .string()
+        .trim()
+        .max(2000, "La description est trop longue.")
+        .optional()
+        .or(z.literal("")),
+    notes: z
+        .string()
+        .trim()
+        .max(10000, "Le compte-rendu est trop long.")
+        .optional()
+        .or(z.literal("")),
+    scheduledAt: z.coerce.date(),
+    durationMinutes: z
+        .number()
+        .int()
+        .positive("La durée doit être positive.")
+        .max(1440, "La durée est invalide.")
+        .nullable()
+        .optional(),
+    teamId: z.string().trim().min(1, "Équipe invalide."),
+    projectId: z.string().trim().nullable().optional(),
+    externalUrl: z
+        .string()
+        .trim()
+        .url("Lien externe invalide.")
+        .nullable()
+        .optional()
+        .or(z.literal("")),
+});
+
+const updateMeetingNotesSchema = z.object({
+    meetingId: z.string().trim().min(1, "Réunion invalide."),
+    notes: z
+        .string()
+        .trim()
+        .max(10000, "Le compte-rendu est trop long."),
+});
+
+const updateMeetingStatusSchema = z.object({
+    meetingId: z.string().trim().min(1, "Réunion invalide."),
+    status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED"]),
+});
+
+function normalizeOptionalString(value?: string | null) {
+    if (!value) return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+export async function createMeeting(input: {
+    title: string;
+    description?: string;
+    notes?: string;
+    scheduledAt: Date | string;
+    durationMinutes?: number | null;
+    teamId: string;
+    projectId?: string | null;
+    externalUrl?: string | null;
+}) {
+    const parsed = createMeetingSchema.parse({
+        ...input,
+        durationMinutes: input.durationMinutes ?? null,
+        projectId: input.projectId ?? null,
+        externalUrl: input.externalUrl ?? null,
+    });
+
+    const user = await getCurrentDbUser();
+    await assertHasTeamRole(parsed.teamId, ["OWNER", "MANAGER"]);
+
+    if (parsed.projectId) {
+        const project = await prisma.project.findUnique({
+            where: { id: parsed.projectId },
+            select: { id: true, teamId: true },
+        });
+
+        if (!project) {
+            throw new ActionError("Projet introuvable.", 404);
+        }
+
+        if (project.teamId !== parsed.teamId) {
+            throw new ActionError(
+                "Le projet sélectionné n'appartient pas à cette équipe.",
+                400
+            );
+        }
+    }
+
+    const meeting = await prisma.teamMeeting.create({
+        data: {
+            title: parsed.title,
+            description: normalizeOptionalString(parsed.description),
+            notes: normalizeOptionalString(parsed.notes),
+            scheduledAt: parsed.scheduledAt,
+            durationMinutes: parsed.durationMinutes ?? null,
+            teamId: parsed.teamId,
+            projectId: normalizeOptionalString(parsed.projectId),
+            externalUrl: normalizeOptionalString(parsed.externalUrl),
+            createdById: user.id,
+        },
+        include: {
+            team: true,
+            project: true,
+            createdBy: true,
+        },
+    });
+
+    revalidatePath("/meetings");
+    revalidatePath(`/teams/${parsed.teamId}`);
+
+    return meeting;
+}
+
+export async function getMeetingsForCurrentUser() {
+    const user = await getCurrentDbUser();
+
+    const teamMemberships = await prisma.teamMember.findMany({
+        where: { userId: user.id },
+        select: { teamId: true },
+    });
+
+    const accessibleTeamIds = teamMemberships.map((membership) => membership.teamId);
+
+    const meetings = await prisma.teamMeeting.findMany({
+        where: {
+            teamId: {
+                in: accessibleTeamIds,
+            },
+        },
+        include: {
+            team: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            project: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            createdBy: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+        orderBy: {
+            scheduledAt: "desc",
+        },
+    });
+
+    return meetings;
+}
+
+export async function getTeamProjectsForMeeting(teamId: string) {
+    await assertHasTeamRole(teamId, ["OWNER", "MANAGER", "MEMBER"]);
+
+    const projects = await prisma.project.findMany({
+        where: {
+            teamId,
+        },
+        select: {
+            id: true,
+            name: true,
+        },
+        orderBy: {
+            name: "asc",
+        },
+    });
+
+    return projects;
+}
+
+export async function getMeetingDetails(meetingId: string) {
+    const user = await getCurrentDbUser();
+
+    const meeting = await prisma.teamMeeting.findUnique({
+        where: { id: meetingId },
+        include: {
+            team: {
+                include: {
+                    members: {
+                        where: {
+                            userId: user.id,
+                        },
+                    },
+                },
+            },
+            project: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            createdBy: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+    });
+
+    if (!meeting) {
+        throw new ActionError("Réunion introuvable.", 404);
+    }
+
+    if (meeting.team.members.length === 0) {
+        throw new ActionError("Accès refusé à cette réunion.", 403);
+    }
+
+    return {
+        ...meeting,
+        team: {
+            id: meeting.team.id,
+            name: meeting.team.name,
+        },
+    };
+}
+
+export async function updateMeetingNotes(meetingId: string, notes: string) {
+    const parsed = updateMeetingNotesSchema.parse({ meetingId, notes });
+
+    const meeting = await prisma.teamMeeting.findUnique({
+        where: { id: parsed.meetingId },
+        select: {
+            id: true,
+            teamId: true,
+        },
+    });
+
+    if (!meeting) {
+        throw new ActionError("Réunion introuvable.", 404);
+    }
+
+    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+
+    const updatedMeeting = await prisma.teamMeeting.update({
+        where: { id: parsed.meetingId },
+        data: {
+            notes: parsed.notes,
+        },
+        include: {
+            team: true,
+            project: true,
+            createdBy: true,
+        },
+    });
+
+    revalidatePath("/meetings");
+    revalidatePath(`/teams/${meeting.teamId}`);
+
+    return updatedMeeting;
+}
+
+export async function updateMeetingStatus(
+    meetingId: string,
+    status: "SCHEDULED" | "COMPLETED" | "CANCELLED"
+) {
+    const parsed = updateMeetingStatusSchema.parse({ meetingId, status });
+
+    const meeting = await prisma.teamMeeting.findUnique({
+        where: { id: parsed.meetingId },
+        select: {
+            id: true,
+            teamId: true,
+        },
+    });
+
+    if (!meeting) {
+        throw new ActionError("Réunion introuvable.", 404);
+    }
+
+    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+
+    const updatedMeeting = await prisma.teamMeeting.update({
+        where: { id: parsed.meetingId },
+        data: {
+            status: parsed.status,
+        },
+        include: {
+            team: true,
+            project: true,
+            createdBy: true,
+        },
+    });
+
+    revalidatePath("/meetings");
+    revalidatePath(`/teams/${meeting.teamId}`);
+
+    return updatedMeeting;
+}

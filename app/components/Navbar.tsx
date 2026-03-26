@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderKanban, Menu, UsersRound, X } from "lucide-react";
+import { CalendarDays, FolderKanban, Menu, UsersRound, X } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { UserButton, useUser } from "@clerk/nextjs";
 import Link from "next/link";
@@ -14,6 +14,7 @@ const Navbar = () => {
 
     const navLinks = [
         { href: "/teams", label: "Équipes", icon: <UsersRound className="w-4 h-4" /> },
+        { href: "/meetings", label: "Réunions", icon: <CalendarDays className="w-4 h-4" /> },
         { href: "/general-projects", label: "Collaborations", icon: null },
         { href: "/", label: "Mes projets", icon: null },
     ];

@@ -90,7 +90,7 @@ export type TeamMeeting = PrismaTeamMeeting & {
     team?: Team;
     project?: Project | null;
     createdBy?: User;
-    recordings?: MeetingRecording[];
+    meetingRecordings?: MeetingRecording[];
     currentUserTeamRole?: TeamRole | null;
 };
 

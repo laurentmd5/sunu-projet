@@ -244,11 +244,11 @@ export async function getMeetingsForCurrentUser() {
                     email: true,
                 },
             },
-            // recordings: {
-            //     select: {
-            //         id: true,
-            //     },
-            // },
+            meetingRecordings: {
+                select: {
+                    id: true,
+                },
+            },
         },
         orderBy: {
             scheduledAt: "desc",
@@ -303,6 +303,20 @@ export async function getMeetingDetails(meetingId: string) {
                     id: true,
                     name: true,
                     email: true,
+                },
+            },
+            meetingRecordings: {
+                include: {
+                    addedBy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                        },
+                    },
+                },
+                orderBy: {
+                    createdAt: "desc",
                 },
             },
         },

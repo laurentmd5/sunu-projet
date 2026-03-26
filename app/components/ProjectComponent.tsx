@@ -3,6 +3,7 @@
 import { Project } from "@/type";
 import {
     ArrowRight,
+    Building2,
     Calendar,
     Copy,
     FolderKanban,
@@ -103,6 +104,13 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
                                 {project.description}
                             </p>
                         )}
+
+                        {project.team ? (
+                            <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-lg border border-base-300 px-3 py-2 text-sm">
+                                <Building2 className="w-4 h-4 shrink-0" />
+                                <span className="truncate">Équipe : {project.team.name}</span>
+                            </div>
+                        ) : null}
                     </div>
 
                     {admin === 1 && onDelete && (

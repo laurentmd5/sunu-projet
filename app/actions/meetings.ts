@@ -216,7 +216,9 @@ export async function getMeetingsForCurrentUser() {
         select: { teamId: true },
     });
 
-    const accessibleTeamIds = teamMemberships.map((membership) => membership.teamId);
+    const accessibleTeamIds = teamMemberships.map(
+        (membership: { teamId: string }) => membership.teamId
+    );
 
     const meetings = await prisma.teamMeeting.findMany({
         where: {

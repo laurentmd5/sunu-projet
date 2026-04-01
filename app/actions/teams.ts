@@ -6,6 +6,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { ActionError, getCurrentDbUser } from "@/lib/permissions";
 import { assertHasTeamRole, canAdminTeam } from "@/lib/team-roles";
+import type { Team } from "@/type";
 
 const createTeamSchema = z.object({
     name: z
@@ -117,12 +118,20 @@ export async function getTeamsForCurrentUser() {
         },
     });
 
-    return memberships.map((membership) => ({
-        ...membership.team,
-        currentUserRole: membership.role,
-        membersCount: membership.team._count.members,
-        projectsCount: membership.team._count.projects,
-    }));
+    return memberships.map(
+        (membership: {
+            role: "OWNER" | "MANAGER" | "MEMBER";
+            team: Team & {
+                createdBy?: any;
+                _count: { members: number; projects: number };
+            };
+        }) => ({
+            ...membership.team,
+            currentUserRole: membership.role,
+            membersCount: membership.team._count.members,
+            projectsCount: membership.team._count.projects,
+        })
+    );
 }
 
 export async function getTeamDetails(teamId: string) {
@@ -203,7 +212,10 @@ export async function getTeamDetails(teamId: string) {
         ...team,
         projects: team.projects.map((project) => ({
             ...project,
-            users: project.users.map((entry) => entry.user),
+            users: project.users.map(
+                (entry: { user: { id: string; name: string; email: string } }) =>
+                    entry.user
+            ),
         })),
     };
 }
@@ -434,7 +446,10 @@ export async function attachProjectToTeam(projectId: string, teamId: string) {
         message: "Projet rattaché à l'équipe avec succès.",
         project: {
             ...updatedProject,
-            users: updatedProject.users.map((entry) => entry.user),
+            users: updatedProject.users.map(
+                (entry: { user: { id: string; name: string; email: string } }) =>
+                    entry.user
+            ),
         },
     };
 }

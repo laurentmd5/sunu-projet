@@ -113,7 +113,10 @@ export async function getProjectsCreatedByUSer(email: string) {
 
         return projects.map((project) => ({
             ...project,
-            users: project.users.map((userEntry) => userEntry.user),
+            users: project.users.map(
+                (userEntry: { user: { id: string; name: string; email: string } }) =>
+                    userEntry.user
+            ),
         }));
     } catch (error) {
         console.error(error);
@@ -246,7 +249,10 @@ export async function getProjectsAssociatedWithUser(email: string) {
 
         return projects.map((project) => ({
             ...project,
-            users: project.users.map((userEntry) => userEntry.user),
+            users: project.users.map(
+                (userEntry: { user: { id: string; name: string; email: string } }) =>
+                    userEntry.user
+            ),
         }));
     } catch (error) {
         console.error(error);
@@ -310,7 +316,10 @@ export async function getProjectInfo(idProject: string, details: boolean) {
         ...project,
         users:
             "users" in project && Array.isArray(project.users)
-                ? project.users.map((entry) => entry.user)
+                ? project.users.map(
+                      (entry: { user: { id: string; name: string; email: string } }) =>
+                          entry.user
+                  )
                 : undefined,
     };
 }

@@ -50,13 +50,21 @@ export async function getProjectMembersWithRoles(projectId: string) {
         orderBy: [{ role: "asc" }, { userId: "asc" }],
     });
 
-    return members.map((membership) => ({
-        id: membership.id,
-        projectId: membership.projectId,
-        userId: membership.userId,
-        role: membership.role,
-        user: membership.user,
-    }));
+    return members.map(
+        (membership: {
+            id: string;
+            projectId: string;
+            userId: string;
+            role: "OWNER" | "MANAGER" | "MEMBER";
+            user: { id: string; name: string | null; email: string };
+        }) => ({
+            id: membership.id,
+            projectId: membership.projectId,
+            userId: membership.userId,
+            role: membership.role,
+            user: membership.user,
+        })
+    );
 }
 
 export async function updateProjectMemberRole(

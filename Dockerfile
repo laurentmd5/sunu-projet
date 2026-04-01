@@ -3,17 +3,23 @@
 FROM node:20-bullseye AS builder
 WORKDIR /app
 
-# Copy package manifests first to leverage Docker layer caching
+# Build args pour les variables NEXT_PUBLIC_* (nécessaires au build)
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+ARG APP_BASE_URL
+
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL
+ENV NEXT_PUBLIC_CLERK_SIGN_UP_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_URL
+ENV APP_BASE_URL=$APP_BASE_URL
+ENV NEXT_TELEMETRY_DISABLED=1
+
 COPY package*.json ./
+RUN npm ci
 
-# Install dependencies needed for build
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
-# Copy application sources and build
 COPY . .
 RUN npm run build
-
-# Prune devDependencies after build to keep the final image smaller
 RUN npm prune --production
 
 FROM node:20-bullseye AS runner
@@ -21,7 +27,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy only the built app and production dependencies
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
@@ -33,4 +38,4 @@ COPY --from=builder /app/lib ./lib
 COPY --from=builder /app/type.ts ./type.ts
 
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]

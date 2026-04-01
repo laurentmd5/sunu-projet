@@ -1,7 +1,7 @@
 # Sunu Projets — Application de gestion de projet
 
 Application web de gestion de projets, tâches, équipes et réunions, conçue pour un usage interne en entreprise.  
-Le projet est développé avec Next.js App Router, TypeScript, Tailwind CSS + DaisyUI, Clerk pour l’authentification, Prisma avec PostgreSQL, Resend pour les emails transactionnels, et une intégration Jitsi V1 basée sur des liens externes de réunion.
+Le projet est développé avec Next.js App Router, TypeScript, Tailwind CSS + DaisyUI, Clerk pour l’authentification, Prisma avec MySQL, Resend pour les emails transactionnels, et une intégration Jitsi V1 basée sur des liens externes de réunion.
 
 ---
 
@@ -56,7 +56,7 @@ Le dépôt public reflète aujourd’hui une version plus avancée que la premi�
 - Server Actions Next.js
 - Clerk (`@clerk/nextjs`)
 - Prisma ORM
-- PostgreSQL
+- MySQL
 - Zod
 
 ### Services externes
@@ -197,7 +197,7 @@ cd Gestion-de-projet
 npm install
 ```
 
-### 3. Démarrer PostgreSQL local via Docker
+### 3. Démarrer MySQL local via Docker
 
 ```bash
 docker compose up -d
@@ -215,7 +215,7 @@ CLERK_SECRET_KEY=
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 
-DATABASE_URL="postgresql://app_user@127.0.0.1:5434/app_gestion_projets?schema=public"
+DATABASE_URL="mysql://app_user:app_password@127.0.0.1:3306/app_gestion_projets"
 
 RESEND_API_KEY=
 EMAIL_FROM="Sunu Projets <onboarding@resend.dev>"

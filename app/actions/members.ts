@@ -21,7 +21,10 @@ export async function getProjectUsers(idProject: string) {
             },
         });
 
-        return projectWithUsers?.users.map((projectUser) => projectUser.user) || [];
+        return projectWithUsers?.users.map(
+            (projectUser: { user: { id: string; name: string; email: string } }) =>
+                projectUser.user
+        ) || [];
     } catch (error) {
         console.log(error);
         throw error instanceof Error ? error : new Error("Erreur lors de la récupération des utilisateurs du projet");

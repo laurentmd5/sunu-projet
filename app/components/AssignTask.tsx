@@ -1,26 +1,25 @@
-import { User } from '@prisma/client';
+import type { User } from '@prisma/client';
 import React, { FC } from 'react';
 import UserInfo from './UserInfo';
-import { on } from 'events';
 
 interface AssignTaskProps {
     users: User[];
     projectId: string;
-    onAssignTask : (user : User) => void
+    onAssignTask: (user: User) => void;
 }
 
-const AssignTask: FC<AssignTaskProps> = ({ users, projectId , onAssignTask}) => {
+const AssignTask: FC<AssignTaskProps> = ({ users, projectId, onAssignTask }) => {
 
-    const [selectedUser, setSelectedUser] = React.useState<User | null>(null)
+    const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
 
     const handleAssign = (user: User) => {
-        setSelectedUser(user)
-        onAssignTask(user)
-        const modal = document.getElementById('my_modal_3') as HTMLDialogElement
+        setSelectedUser(user);
+        onAssignTask(user);
+        const modal = document.getElementById('my_modal_3') as HTMLDialogElement;
         if (modal) {
-            modal.close()
+            modal.close();
         }
-    }
+    };
 
     return (
         <div className='w-full'>
@@ -56,6 +55,6 @@ const AssignTask: FC<AssignTaskProps> = ({ users, projectId , onAssignTask}) => 
             </dialog>
         </div>
     );
-}
+};
 
 export default AssignTask;

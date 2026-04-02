@@ -7,7 +7,7 @@ import {
     Team as PrismaTeam,
     TeamMeeting as PrismaTeamMeeting,
     User,
-} from ".prisma/client";
+} from "@/prisma/generated/client";
 
 export type ProjectRole = "OWNER" | "MANAGER" | "MEMBER";
 export type TeamRole = "OWNER" | "MANAGER" | "MEMBER";

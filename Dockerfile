@@ -20,6 +20,8 @@ ENV NEXT_SKIP_TYPE_CHECK=true
 COPY package*.json ./
 RUN npm ci
 
+COPY prisma ./prisma
+
 COPY . .
 RUN npm run build
 RUN npm prune --production

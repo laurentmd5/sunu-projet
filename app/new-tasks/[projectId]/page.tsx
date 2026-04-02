@@ -5,13 +5,19 @@ import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper';
 import { Project, ProjectRole, ProjectUserMember } from '@/type';
 import { useUser } from '@clerk/nextjs';
-import { User } from '@prisma/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { toast } from 'react-toastify';
+
+// Définition du type User localement
+interface User {
+    id: string;
+    name: string | null;
+    email: string;
+}
 
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const modules = {
@@ -34,7 +40,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [project, setProject] = useState<Project | null>(null);
     const [usersProject, setUsersProject] = useState<User[]>([]);
     const [members, setMembers] = useState<ProjectUserMember[]>([]);
-    const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [dueDate, setDueDate] = useState<Date | null>(null);
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
@@ -166,4 +172,4 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     )
 }
 
-export default page
+export default page;

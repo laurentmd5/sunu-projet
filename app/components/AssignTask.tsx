@@ -1,6 +1,13 @@
-import type { User } from '@prisma/client';
 import React, { FC } from 'react';
 import UserInfo from './UserInfo';
+
+// Définir le type User manuellement au lieu de l'importer de @prisma/client
+interface User {
+    id: string;
+    name: string | null;
+    email: string;
+    // Ajoutez d'autres champs si nécessaire (imageUrl, etc.)
+}
 
 interface AssignTaskProps {
     users: User[];

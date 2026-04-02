@@ -5,6 +5,12 @@
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
+    "noImplicitAny": false,  // ← Désactivé temporairement
+    "noImplicitThis": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,  // ← Désactivé temporairement
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",

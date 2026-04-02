@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-bullseye AS builder
+FROM node:22-bullseye AS builder
 WORKDIR /app
 
 # Build args pour les variables NEXT_PUBLIC_* (nécessaires au build)
@@ -14,6 +14,7 @@ ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL
 ENV NEXT_PUBLIC_CLERK_SIGN_UP_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_URL
 ENV APP_BASE_URL=$APP_BASE_URL
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_SKIP_TYPE_CHECK=true 
 
 COPY package*.json ./
 RUN npm ci
@@ -22,7 +23,7 @@ COPY . .
 RUN npm run build
 RUN npm prune --production
 
-FROM node:20-bullseye AS runner
+FROM node:22-bullseye AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

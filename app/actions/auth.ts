@@ -3,12 +3,14 @@
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { ActionError } from "@/lib/permissions";
-import { hashPassword } from "@/lib/auth-password";
+import { hashPassword, verifyPassword } from "@/lib/auth-password";
 import {
     generateSessionToken,
     getSessionExpiresAt,
     hashSessionToken,
     setSessionCookie,
+    getSessionCookie,
+    clearSessionCookie,
 } from "@/lib/auth-session";
 
 const registerSchema = z.object({
@@ -100,4 +102,89 @@ export async function registerWithPassword(
             email: result.email,
         },
     };
+}
+
+export async function loginWithPassword(email: string, password: string) {
+    const parsed = z.object({
+        email: z
+            .string()
+            .trim()
+            .toLowerCase()
+            .email("Adresse email invalide"),
+        password: z
+            .string()
+            .min(1, "Le mot de passe est requis"),
+    }).parse({
+        email,
+        password,
+    });
+
+    const user = await prisma.user.findUnique({
+        where: { email: parsed.email },
+    });
+
+    if (!user) {
+        throw new ActionError("Email ou mot de passe incorrect.", 401);
+    }
+
+    const credential = await (prisma as any).authCredential.findUnique({
+        where: { userId: user.id },
+    });
+
+    if (!credential) {
+        throw new ActionError(
+            "Ce compte ne dispose pas encore d'un mot de passe local.",
+            401
+        );
+    }
+
+    const isValidPassword = await verifyPassword(
+        parsed.password,
+        credential.passwordHash
+    );
+
+    if (!isValidPassword) {
+        throw new ActionError("Email ou mot de passe incorrect.", 401);
+    }
+
+    const sessionToken = generateSessionToken();
+    const sessionTokenHash = hashSessionToken(sessionToken);
+    const expiresAt = getSessionExpiresAt();
+
+    await (prisma as any).session.create({
+        data: {
+            userId: user.id,
+            tokenHash: sessionTokenHash,
+            expiresAt,
+        },
+    });
+
+    await setSessionCookie(sessionToken, expiresAt);
+
+    return {
+        success: true,
+        user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+        },
+    };
+}
+
+export async function logoutCurrentUser() {
+    const sessionToken = await getSessionCookie();
+
+    if (sessionToken) {
+        const sessionTokenHash = hashSessionToken(sessionToken);
+
+        await (prisma as any).session.deleteMany({
+            where: {
+                tokenHash: sessionTokenHash,
+            },
+        });
+    }
+
+    await clearSessionCookie();
+
+    return { success: true };
 }

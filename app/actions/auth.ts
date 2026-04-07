@@ -30,6 +30,17 @@ const registerSchema = z.object({
         .max(72, "Le mot de passe est trop long"),
 });
 
+const loginSchema = z.object({
+    email: z
+        .string()
+        .trim()
+        .toLowerCase()
+        .email("Adresse email invalide"),
+    password: z
+        .string()
+        .min(1, "Le mot de passe est requis"),
+});
+
 export async function registerWithPassword(
     name: string,
     email: string,
@@ -43,22 +54,11 @@ export async function registerWithPassword(
 
     const existingUser = await prisma.user.findUnique({
         where: { email: parsed.email },
+        select: { id: true },
     });
 
     if (existingUser) {
-        // Utiliser prisma.$transaction pour accéder aux modèles qui pourraient ne pas être typés correctement
-        const existingCredential = await (prisma as any).authCredential.findUnique({
-            where: { userId: existingUser.id },
-        });
-
-        if (existingCredential) {
-            throw new ActionError("Un compte existe déjà avec cette adresse email.", 409);
-        }
-
-        throw new ActionError(
-            "Cette adresse email est déjà liée à un compte existant. La création d'un mot de passe local n'est pas encore disponible pour ce compte.",
-            409
-        );
+        throw new ActionError("Un compte existe déjà avec cette adresse email.", 409);
     }
 
     const passwordHash = await hashPassword(parsed.password);
@@ -66,30 +66,22 @@ export async function registerWithPassword(
     const sessionTokenHash = hashSessionToken(sessionToken);
     const expiresAt = getSessionExpiresAt();
 
-    const result = await prisma.$transaction(async (tx) => {
-        const user = await tx.user.create({
-            data: {
-                name: parsed.name,
-                email: parsed.email,
+    const result = await (prisma.user as any).create({
+        data: {
+            name: parsed.name,
+            email: parsed.email,
+            credential: {
+                create: {
+                    passwordHash,
+                },
             },
-        });
-
-        await (tx as any).authCredential.create({
-            data: {
-                userId: user.id,
-                passwordHash,
+            sessions: {
+                create: {
+                    tokenHash: sessionTokenHash,
+                    expiresAt,
+                },
             },
-        });
-
-        await (tx as any).session.create({
-            data: {
-                userId: user.id,
-                tokenHash: sessionTokenHash,
-                expiresAt,
-            },
-        });
-
-        return user;
+        },
     });
 
     await setSessionCookie(sessionToken, expiresAt);
@@ -105,33 +97,23 @@ export async function registerWithPassword(
 }
 
 export async function loginWithPassword(email: string, password: string) {
-    const parsed = z.object({
-        email: z
-            .string()
-            .trim()
-            .toLowerCase()
-            .email("Adresse email invalide"),
-        password: z
-            .string()
-            .min(1, "Le mot de passe est requis"),
-    }).parse({
+    const parsed = loginSchema.parse({
         email,
         password,
     });
 
-    const user = await prisma.user.findUnique({
+    const user = await (prisma.user as any).findUnique({
         where: { email: parsed.email },
+        include: {
+            credential: true,
+        },
     });
 
     if (!user) {
         throw new ActionError("Email ou mot de passe incorrect.", 401);
     }
 
-    const credential = await (prisma as any).authCredential.findUnique({
-        where: { userId: user.id },
-    });
-
-    if (!credential) {
+    if (!user.credential) {
         throw new ActionError(
             "Ce compte ne dispose pas encore d'un mot de passe local.",
             401
@@ -140,7 +122,7 @@ export async function loginWithPassword(email: string, password: string) {
 
     const isValidPassword = await verifyPassword(
         parsed.password,
-        credential.passwordHash
+        user.credential.passwordHash
     );
 
     if (!isValidPassword) {
@@ -151,11 +133,15 @@ export async function loginWithPassword(email: string, password: string) {
     const sessionTokenHash = hashSessionToken(sessionToken);
     const expiresAt = getSessionExpiresAt();
 
-    await (prisma as any).session.create({
+    await (prisma.user as any).update({
+        where: { id: user.id },
         data: {
-            userId: user.id,
-            tokenHash: sessionTokenHash,
-            expiresAt,
+            sessions: {
+                create: {
+                    tokenHash: sessionTokenHash,
+                    expiresAt,
+                },
+            },
         },
     });
 
@@ -177,11 +163,31 @@ export async function logoutCurrentUser() {
     if (sessionToken) {
         const sessionTokenHash = hashSessionToken(sessionToken);
 
-        await (prisma as any).session.deleteMany({
+        const user = await (prisma.user as any).findFirst({
             where: {
-                tokenHash: sessionTokenHash,
+                sessions: {
+                    some: {
+                        tokenHash: sessionTokenHash,
+                    },
+                },
+            },
+            select: {
+                id: true,
             },
         });
+
+        if (user) {
+            await (prisma.user as any).update({
+                where: { id: user.id },
+                data: {
+                    sessions: {
+                        deleteMany: {
+                            tokenHash: sessionTokenHash,
+                        },
+                    },
+                },
+            });
+        }
     }
 
     await clearSessionCookie();

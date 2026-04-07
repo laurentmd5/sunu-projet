@@ -1,44 +1,51 @@
 "use server";
 
-import { randomBytes } from "crypto";
 import prisma from "@/lib/prisma";
+import { getCurrentAuthIdentity } from "@/lib/auth";
 
-export async function checkAndAddUser(email: string, name: string) {
-    if (!email) return;
+export async function syncCurrentUser() {
+    const identity = await getCurrentAuthIdentity();
+
+    if (!identity?.email) {
+        return null;
+    }
 
     try {
         const existingUser = await prisma.user.findUnique({
             where: {
-                email: email,
+                email: identity.email,
             },
         });
 
         if (!existingUser) {
-            await prisma.user.create({
+            const createdUser = await prisma.user.create({
                 data: {
-                    email,
-                    name: name || email,
+                    email: identity.email,
+                    name: identity.name || identity.email,
                 },
             });
 
             console.log("Utilisateur ajouté à la base de données.");
-        } else {
-            console.log("Utilisateur déjà présent dans la base de données.");
+            return createdUser;
         }
 
-        if (name && existingUser?.name !== name) {
-            await prisma.user.update({
+        if (identity.name && existingUser.name !== identity.name) {
+            const updatedUser = await prisma.user.update({
                 where: {
-                    email: email,
+                    email: identity.email,
                 },
                 data: {
-                    name: name,
+                    name: identity.name,
                 },
             });
+
             console.log("Nom de l'utilisateur mis à jour.");
+            return updatedUser;
         }
 
+        return existingUser;
     } catch (error) {
-        console.error("Erreur lors de la vérification de l'utilisateur :", error);
+        console.error("Erreur lors de la synchronisation de l'utilisateur :", error);
+        return null;
     }
 }

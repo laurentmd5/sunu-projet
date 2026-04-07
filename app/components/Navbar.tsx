@@ -2,7 +2,6 @@
 
 import { CalendarDays, FolderKanban, Menu, UsersRound, X } from "lucide-react";
 import React, { useState } from "react";
-import UserMenu from "./UserMenu";
 import LocalLogoutButton from "./LocalLogoutButton";
 import LocalUserBadge from "./LocalUserBadge";
 import Link from "next/link";

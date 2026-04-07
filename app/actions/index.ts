@@ -1,6 +1,9 @@
 // Users
 export { syncCurrentUser } from "./users";
 
+// Auth
+export * from "./auth";
+
 // Projects
 export {
     createProject,

@@ -1,7 +1,7 @@
 # Sunu Projets — Application de gestion de projet
 
 Application web de gestion de projets, tâches, équipes et réunions, conçue pour un usage interne en entreprise.  
-Le projet est développé avec Next.js App Router, TypeScript, Tailwind CSS + DaisyUI, Clerk pour l’authentification, Prisma avec MySQL, Resend pour les emails transactionnels, et une intégration Jitsi V1 basée sur des liens externes de réunion.
+Le projet est développé avec Next.js App Router, TypeScript, Tailwind CSS + DaisyUI, **authentification locale maison**, Prisma avec MySQL, Resend pour les emails transactionnels, et une intégration Jitsi V1 basée sur des liens externes de réunion.
 
 ---
 
@@ -54,13 +54,13 @@ Le dépôt public reflète aujourd’hui une version plus avancée que la premi�
 
 ### Backend / logique serveur
 - Server Actions Next.js
-- Clerk (`@clerk/nextjs`)
+- **Authentification locale maison** (sessions sécurisées avec bcrypt)
 - Prisma ORM
 - MySQL
 - Zod
 
 ### Services externes
-- Clerk pour l’authentification
+- **Authentification locale maison** (plus de dépendance externe)
 - Resend pour les emails
 - Jitsi en V1 via lien externe de réunion
 
@@ -91,8 +91,27 @@ npm run lint
 
 ## 5. Modèle métier actuel
 
+### Authentification locale
+
+Le projet utilise désormais **une authentification locale 100% maison** :
+
+- **Inscription** : Formulaire `/register` avec validation et hash bcrypt
+- **Connexion** : Formulaire `/login` avec vérification des identifiants
+- **Sessions** : Cookies HTTP-only sécurisés avec expiration
+- **Middleware** : Protection des routes par vérification de session locale
+- **UI** : Badge utilisateur et bouton de déconnexion intégrés
+
+#### Flux complet
+```
+1. Inscription → Création User + AuthCredential + Session
+2. Connexion → Vérification + Session
+3. Navigation → Middleware autorise via cookie
+4. Utilisation → `useAuthUser()` récupère l'utilisateur
+5. Déconnexion → Suppression Session + Cookie
+```
+
 ### Utilisateurs
-L’utilisateur applicatif est synchronisé à partir de Clerk et sert de base aux relations métier.
+L'utilisateur applicatif est géré localement et sert de base aux relations métier.
 
 ### Équipes / workspaces
 Le modèle `Team` permet de structurer les utilisateurs à un niveau supérieur au projet, avec des rôles d’équipe (`OWNER`, `MANAGER`, `MEMBER`).

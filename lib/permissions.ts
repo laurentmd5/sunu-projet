@@ -1,6 +1,6 @@
 // lib/permissions.ts
 import prisma from "@/lib/prisma";
-import { currentUser } from "@clerk/nextjs/server";
+import { getCurrentAuthIdentity } from "@/lib/auth";
 
 export class ActionError extends Error {
     status: number;
@@ -13,15 +13,17 @@ export class ActionError extends Error {
 }
 
 export async function getCurrentDbUser() {
-    const clerkUser = await currentUser();
-    const email = clerkUser?.emailAddresses?.[0]?.emailAddress;
+    const identity = await getCurrentAuthIdentity();
 
-    if (!email) {
-        throw new ActionError("Vous devez être connecté pour effectuer cette action.", 401);
+    if (!identity?.email) {
+        throw new ActionError(
+            "Vous devez être connecté pour effectuer cette action.",
+            401
+        );
     }
 
     const user = await prisma.user.findUnique({
-        where: { email },
+        where: { email: identity.email },
     });
 
     if (!user) {

@@ -4,38 +4,33 @@ import { useEffect, useState } from "react";
 import Wrapper from "./components/Wrapper";
 import { FolderKanban } from "lucide-react";
 import { createProject, deleteProjectById, getProjectsCreatedByUSer } from "./actions";
-import { useUser } from "@clerk/nextjs";
 import { toast } from "react-toastify";
 import { Project } from "@/type";
 import ProjectComponent from "./components/ProjectComponent";
 import EmptyState from "./components/EmptyState";
 
 export default function Home() {
-  const { user } = useUser();
-  const email = user?.primaryEmailAddress?.emailAddress as string;
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
 
-  const fetchProjects = async (email: string) => {
+  const fetchProjects = async () => {
     try {
-      const myproject = await getProjectsCreatedByUSer(email);
+      const myproject = await getProjectsCreatedByUSer();
       setProjects(myproject);
     } catch (error) {
-      console.error(`Erreur lors du chargement des projets:`, error);
+      console.error("Erreur lors du chargement des projets:", error);
     }
   };
 
   useEffect(() => {
-    if (email) {
-      fetchProjects(email);
-    }
-  }, [email]);
+    fetchProjects();
+  }, []);
 
   const deleteProject = async (projectId: string) => {
     try {
       await deleteProjectById(projectId);
-      await fetchProjects(email);
+      await fetchProjects();
       toast.success("Projet supprimé !");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erreur lors de la suppression");
@@ -46,7 +41,7 @@ export default function Home() {
   const handleSubmit = async () => {
     try {
       const modal = document.getElementById("my_modal_3") as HTMLDialogElement;
-      await createProject(name, description, email);
+      await createProject(name, description);
 
       if (modal) {
         modal.close();
@@ -54,10 +49,10 @@ export default function Home() {
 
       setName("");
       setDescription("");
-      fetchProjects(email);
+      await fetchProjects();
       toast.success("Projet créé");
     } catch (error) {
-      console.error(`Error creating project:`, error);
+      console.error("Error creating project:", error);
       toast.error("Erreur lors de la création du projet");
     }
   };

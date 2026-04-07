@@ -1,41 +1,36 @@
 "use client";
-import Reac, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Wrapper from "../components/Wrapper";
 import { SquarePlus } from "lucide-react";
 import { toast } from "react-toastify";
 import { addUserToProject, getProjectsAssociatedWithUser } from "../actions";
-import { useUser } from "@clerk/nextjs";
 import { Project } from "@/type";
 import ProjectComponent from "../components/ProjectComponent";
 import EmptyState from "../components/EmptyState";
 
-const page = () => {
+const Page = () => {
 
     const [inviteCode, setInviteCode] = useState("")
-    const { user } = useUser()
-    const email = user?.primaryEmailAddress?.emailAddress as string
     const [associatedProjects, setAssociatedProjects] = useState<Project[]>([])
 
-    const fetchProjects = async (email: string) => {
+    const fetchProjects = async () => {
         try {
-            const associated = await getProjectsAssociatedWithUser(email)
+            const associated = await getProjectsAssociatedWithUser()
             setAssociatedProjects(associated)
         } catch (error) {
-            toast.error(`Erreur lors du chargement des projets:`)
+            toast.error("Erreur lors du chargement des projets")
         }
     }
 
     useEffect(() => {
-        if (email) {
-            fetchProjects(email)
-        }
-    }, [email])
+        fetchProjects()
+    }, [])
 
     const handleSubmit = async () => {
         try {
             if (inviteCode != "") {
-                await addUserToProject(email, inviteCode)
-                fetchProjects(email)
+                await addUserToProject(inviteCode)
+                await fetchProjects()
                 setInviteCode("")
                 toast.success("Vous avez rejoint le projet avec succès")
             } else {
@@ -87,4 +82,4 @@ const page = () => {
     )
 }
 
-export default page
+export default Page;

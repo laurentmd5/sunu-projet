@@ -2,7 +2,7 @@
 
 import { CalendarDays, FolderKanban, Menu, UsersRound, X } from "lucide-react";
 import React, { useState } from "react";
-import { UserButton } from "@clerk/nextjs";
+import UserMenu from "./UserMenu";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -57,7 +57,7 @@ const Navbar = () => {
 
                     <div className="hidden sm:flex items-center gap-3">
                         {renderLinks("btn btn-sm")}
-                        <UserButton />
+                        <UserMenu />
                     </div>
                 </div>
             </div>
@@ -69,7 +69,7 @@ const Navbar = () => {
             >
                 <div className="flex h-full flex-col px-4 py-4">
                     <div className="mb-6 flex items-center justify-between">
-                        <UserButton />
+                        <UserMenu />
                         <button
                             className="btn btn-sm w-fit"
                             onClick={() => setMenuOpen(false)}

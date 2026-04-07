@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
 import { syncCurrentUser } from "../actions/users";
+import { useAuthUser } from "@/lib/auth-client";
 
 export default function AuthUserSync() {
-    const { user } = useUser();
+    const { isSignedIn } = useAuthUser();
 
     useEffect(() => {
-        if (user) {
+        if (isSignedIn) {
             syncCurrentUser();
         }
-    }, [user]);
+    }, [isSignedIn]);
 
     return null;
 }

@@ -1,14 +1,12 @@
 "use client";
 
 import { CalendarDays, FolderKanban, Menu, UsersRound, X } from "lucide-react";
-import React, { useEffect, useState } from "react";
-import { UserButton, useUser } from "@clerk/nextjs";
+import React, { useState } from "react";
+import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { checkAndAddUser } from "../actions";
 
 const Navbar = () => {
-    const { user } = useUser();
     const [menuOpen, setMenuOpen] = useState(false);
     const pathname = usePathname();
 
@@ -18,15 +16,6 @@ const Navbar = () => {
         { href: "/general-projects", label: "Collaborations", icon: null },
         { href: "/", label: "Mes projets", icon: null },
     ];
-
-    useEffect(() => {
-        const email = user?.primaryEmailAddress?.emailAddress;
-        const name = user?.fullName || user?.firstName || "";
-
-        if (email) {
-            checkAndAddUser(email, name);
-        }
-    }, [user]);
 
     const isActiveLink = (href: string) =>
         pathname.replace(/\/$/, "") === href.replace(/\/$/, "");

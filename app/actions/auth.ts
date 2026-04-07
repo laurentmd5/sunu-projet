@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "crypto";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { ActionError } from "@/lib/permissions";
@@ -41,6 +42,12 @@ const loginSchema = z.object({
         .min(1, "Le mot de passe est requis"),
 });
 
+type CredentialRow = {
+    id: string;
+    userId: string;
+    passwordHash: string;
+};
+
 export async function registerWithPassword(
     name: string,
     email: string,
@@ -66,23 +73,22 @@ export async function registerWithPassword(
     const sessionTokenHash = hashSessionToken(sessionToken);
     const expiresAt = getSessionExpiresAt();
 
-    const result = await (prisma.user as any).create({
+    const result = await prisma.user.create({
         data: {
             name: parsed.name,
             email: parsed.email,
-            credential: {
-                create: {
-                    passwordHash,
-                },
-            },
-            sessions: {
-                create: {
-                    tokenHash: sessionTokenHash,
-                    expiresAt,
-                },
-            },
         },
     });
+
+    await prisma.$executeRaw`
+        INSERT INTO \`AuthCredential\` (\`id\`, \`userId\`, \`passwordHash\`, \`createdAt\`, \`updatedAt\`)
+        VALUES (${crypto.randomUUID()}, ${result.id}, ${passwordHash}, NOW(), NOW())
+    `;
+
+    await prisma.$executeRaw`
+        INSERT INTO \`Session\` (\`id\`, \`userId\`, \`tokenHash\`, \`expiresAt\`, \`createdAt\`, \`updatedAt\`)
+        VALUES (${crypto.randomUUID()}, ${result.id}, ${sessionTokenHash}, ${expiresAt}, NOW(), NOW())
+    `;
 
     await setSessionCookie(sessionToken, expiresAt);
 
@@ -102,10 +108,12 @@ export async function loginWithPassword(email: string, password: string) {
         password,
     });
 
-    const user = await (prisma.user as any).findUnique({
+    const user = await prisma.user.findUnique({
         where: { email: parsed.email },
-        include: {
-            credential: true,
+        select: {
+            id: true,
+            name: true,
+            email: true,
         },
     });
 
@@ -113,7 +121,16 @@ export async function loginWithPassword(email: string, password: string) {
         throw new ActionError("Email ou mot de passe incorrect.", 401);
     }
 
-    if (!user.credential) {
+    const credentials = await prisma.$queryRaw<CredentialRow[]>`
+        SELECT \`id\`, \`userId\`, \`passwordHash\` 
+        FROM \`AuthCredential\` 
+        WHERE \`userId\` = ${user.id}
+        LIMIT 1
+    `;
+
+    const credential = credentials[0];
+
+    if (!credential) {
         throw new ActionError(
             "Ce compte ne dispose pas encore d'un mot de passe local.",
             401
@@ -122,7 +139,7 @@ export async function loginWithPassword(email: string, password: string) {
 
     const isValidPassword = await verifyPassword(
         parsed.password,
-        user.credential.passwordHash
+        credential.passwordHash
     );
 
     if (!isValidPassword) {
@@ -133,17 +150,10 @@ export async function loginWithPassword(email: string, password: string) {
     const sessionTokenHash = hashSessionToken(sessionToken);
     const expiresAt = getSessionExpiresAt();
 
-    await (prisma.user as any).update({
-        where: { id: user.id },
-        data: {
-            sessions: {
-                create: {
-                    tokenHash: sessionTokenHash,
-                    expiresAt,
-                },
-            },
-        },
-    });
+    await prisma.$executeRaw`
+        INSERT INTO \`Session\` (\`id\`, \`userId\`, \`tokenHash\`, \`expiresAt\`, \`createdAt\`, \`updatedAt\`)
+        VALUES (${crypto.randomUUID()}, ${user.id}, ${sessionTokenHash}, ${expiresAt}, NOW(), NOW())
+    `;
 
     await setSessionCookie(sessionToken, expiresAt);
 
@@ -163,31 +173,10 @@ export async function logoutCurrentUser() {
     if (sessionToken) {
         const sessionTokenHash = hashSessionToken(sessionToken);
 
-        const user = await (prisma.user as any).findFirst({
-            where: {
-                sessions: {
-                    some: {
-                        tokenHash: sessionTokenHash,
-                    },
-                },
-            },
-            select: {
-                id: true,
-            },
-        });
-
-        if (user) {
-            await (prisma.user as any).update({
-                where: { id: user.id },
-                data: {
-                    sessions: {
-                        deleteMany: {
-                            tokenHash: sessionTokenHash,
-                        },
-                    },
-                },
-            });
-        }
+        await prisma.$executeRaw`
+            DELETE FROM \`Session\` 
+            WHERE \`tokenHash\` = ${sessionTokenHash}
+        `;
     }
 
     await clearSessionCookie();

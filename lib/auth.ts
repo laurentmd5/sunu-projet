@@ -7,6 +7,12 @@ export type AuthIdentity = {
     name?: string | null;
 };
 
+type LocalUserRow = {
+    id: string;
+    email: string;
+    name: string | null;
+};
+
 async function getLocalAuthIdentity(): Promise<AuthIdentity | null> {
     const sessionToken = await getSessionCookie();
 
@@ -15,38 +21,25 @@ async function getLocalAuthIdentity(): Promise<AuthIdentity | null> {
     }
 
     const sessionTokenHash = hashSessionToken(sessionToken);
-    const now = new Date();
 
-    const session = await (prisma as any).session.findUnique({
-        where: {
-            tokenHash: sessionTokenHash,
-        },
-        include: {
-            user: true,
-        },
-    });
+    const users = await prisma.$queryRaw<LocalUserRow[]>`
+        SELECT u.\`id\`, u.\`email\`, u.\`name\` 
+        FROM \`User\` u
+        INNER JOIN \`Session\` s ON s.\`userId\` = u.\`id\` 
+        WHERE s.\`tokenHash\` = ${sessionTokenHash}
+          AND s.\`expiresAt\` > NOW()
+        LIMIT 1
+    `;
 
-    if (!session) {
-        return null;
-    }
+    const user = users[0];
 
-    if (session.expiresAt <= now) {
-        await (prisma as any).session.delete({
-            where: {
-                id: session.id,
-            },
-        });
-
-        return null;
-    }
-
-    if (!session.user?.email) {
+    if (!user?.email) {
         return null;
     }
 
     return {
-        email: session.user.email,
-        name: session.user.name || null,
+        email: user.email,
+        name: user.name || null,
     };
 }
 

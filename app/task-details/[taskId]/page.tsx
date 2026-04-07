@@ -16,16 +16,6 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
     const { email, isLoading } = useAuthUser();
 
-    if (isLoading) {
-        return (
-            <Wrapper>
-                <div className="p-4">
-                    <p className="text-sm opacity-70">Chargement...</p>
-                </div>
-            </Wrapper>
-        );
-    }
-
     const [task, setTask] = useState<Task | null>(null)
     const [taskId, setTaskId] = useState<string>("")
     const [project, setProject] = useState<Project | null>(null);
@@ -143,25 +133,33 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         }
     }
 
-    useEffect(
-        () => {
-            const modal = document.getElementById('my_modal_3') as HTMLDialogElement
-            const handleClose = () => {
-                if (status === TASK_STATUSES.DONE && status !== realStatus) {
-                    setStatus(realStatus)
-                }
-            }
+    const handleClose = () => {
+        if (status === TASK_STATUSES.DONE && status !== realStatus) {
+            setStatus(realStatus)
+        }
+    }
 
+    useEffect(() => {
+        const modal = document.getElementById('my_modal_3') as HTMLDialogElement
+        if (modal) {
+            modal.addEventListener('close', handleClose)
+        }
+        return () => {
             if (modal) {
-                modal.addEventListener('close', handleClose)
+                modal.removeEventListener('close', handleClose)
             }
-            return () => {
-                if (modal) {
-                    modal.removeEventListener('close', handleClose)
-                }
-            }
-        }, [status, realStatus]
-    )
+        }
+    }, [status, realStatus])
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="p-4">
+                    <p className="text-sm opacity-70">Chargement...</p>
+                </div>
+            </Wrapper>
+        );
+    }
 
     return (
         <Wrapper>

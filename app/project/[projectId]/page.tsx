@@ -97,16 +97,6 @@ type TeamOption = Team & {
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const { email, isLoading } = useAuthUser();
 
-    if (isLoading) {
-        return (
-            <Wrapper>
-                <div className="p-4">
-                    <p className="text-sm opacity-70">Chargement...</p>
-                </div>
-            </Wrapper>
-        );
-    }
-
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);
     const [members, setMembers] = useState<ProjectUserMember[]>([]);
@@ -265,6 +255,16 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         const assignedMatch = !assignedFilter || task?.user?.email === email;
         return statusMatch && assignedMatch;
     });
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="p-4">
+                    <p className="text-sm opacity-70">Chargement...</p>
+                </div>
+            </Wrapper>
+        );
+    }
 
     const deleteTask = async (taskId: string) => {
         try {

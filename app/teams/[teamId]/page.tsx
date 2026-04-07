@@ -66,16 +66,6 @@ type PendingRemoval = {
 const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
     const { email, isLoading } = useAuthUser();
 
-    if (isLoading) {
-        return (
-            <Wrapper>
-                <div className="rounded-xl border border-base-300 p-5">
-                    <p className="text-sm opacity-70">Chargement...</p>
-                </div>
-            </Wrapper>
-        );
-    }
-
     const [teamId, setTeamId] = useState("");
     const [team, setTeam] = useState<Team | null>(null);
     const [members, setMembers] = useState<TeamMember[]>([]);

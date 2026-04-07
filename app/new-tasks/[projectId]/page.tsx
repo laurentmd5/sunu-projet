@@ -20,6 +20,8 @@ interface User {
 }
 
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
+    const { email: currentEmail, isLoading } = useAuthUser();
+
     const modules = {
         toolbar: [
             [{ header: [1, 2, 3, false] }],
@@ -32,18 +34,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             ['clean'],
         ],
     };
-
-    const { email: currentEmail, isLoading } = useAuthUser();
-
-    if (isLoading) {
-        return (
-            <Wrapper>
-                <div className="p-4">
-                    <p className="text-sm opacity-70">Chargement...</p>
-                </div>
-            </Wrapper>
-        );
-    }
 
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);
@@ -86,6 +76,16 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
     const currentUserRole: ProjectRole | null = currentMembership?.role ?? null;
     const canCreateTask = currentUserRole === "OWNER" || currentUserRole === "MANAGER";
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="p-4">
+                    <p className="text-sm opacity-70">Chargement...</p>
+                </div>
+            </Wrapper>
+        );
+    }
 
     const handleUserSelect = (user: User) => {
         setSelectedUser(user);

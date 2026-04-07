@@ -4,7 +4,7 @@ import { createTask, getProjectInfo, getProjectMembersWithRoles, getProjectUsers
 import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper';
 import { Project, ProjectRole, ProjectUserMember } from '@/type';
-import { useUser } from '@clerk/nextjs';
+import { useAuthUser } from "@/lib/auth-client";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -33,8 +33,17 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         ],
     };
 
-    const { user } = useUser();
-    const currentEmail = user?.primaryEmailAddress?.emailAddress as string;
+    const { email: currentEmail, isLoading } = useAuthUser();
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="p-4">
+                    <p className="text-sm opacity-70">Chargement...</p>
+                </div>
+            </Wrapper>
+        );
+    }
 
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);

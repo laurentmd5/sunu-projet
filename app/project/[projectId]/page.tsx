@@ -18,7 +18,7 @@ import Wrapper from "@/app/components/Wrapper";
 import { PROJECT_ROLE_LABELS } from "@/lib/project-role-labels";
 import { TASK_STATUSES } from "@/lib/task-status";
 import { Project, ProjectRole, ProjectUserMember, Team, TeamRole } from "@/type";
-import { useUser } from "@clerk/nextjs";
+import { useAuthUser } from "@/lib/auth-client";
 import {
     ArrowRight,
     Building2,
@@ -95,8 +95,17 @@ type TeamOption = Team & {
 };
 
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
-    const { user } = useUser();
-    const email = user?.primaryEmailAddress?.emailAddress as string;
+    const { email, isLoading } = useAuthUser();
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="p-4">
+                    <p className="text-sm opacity-70">Chargement...</p>
+                </div>
+            </Wrapper>
+        );
+    }
 
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);

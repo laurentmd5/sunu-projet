@@ -9,13 +9,22 @@ import React, { useEffect, useMemo, useState } from 'react'
 import ReactQuill from 'react-quill-new'
 import { toast } from 'react-toastify'
 import 'react-quill-new/dist/quill.snow.css';
-import { useUser } from '@clerk/nextjs'
+import { useAuthUser } from "@/lib/auth-client"
 import { TASK_STATUSES } from '@/lib/task-status'
 
 const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
-    const { user } = useUser()
-    const email = user?.primaryEmailAddress?.emailAddress as string
+    const { email, isLoading } = useAuthUser();
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="p-4">
+                    <p className="text-sm opacity-70">Chargement...</p>
+                </div>
+            </Wrapper>
+        );
+    }
 
     const [task, setTask] = useState<Task | null>(null)
     const [taskId, setTaskId] = useState<string>("")

@@ -21,7 +21,7 @@ import {
     UsersRound,
 } from "lucide-react";
 import { toast } from "react-toastify";
-import { useUser } from "@clerk/nextjs";
+import { useAuthUser } from "@/lib/auth-client";
 import Link from "next/link";
 
 const ROLE_ORDER: Record<TeamRole, number> = {
@@ -64,8 +64,17 @@ type PendingRemoval = {
 };
 
 const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
-    const { user } = useUser();
-    const email = user?.primaryEmailAddress?.emailAddress as string;
+    const { email, isLoading } = useAuthUser();
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="rounded-xl border border-base-300 p-5">
+                    <p className="text-sm opacity-70">Chargement...</p>
+                </div>
+            </Wrapper>
+        );
+    }
 
     const [teamId, setTeamId] = useState("");
     const [team, setTeam] = useState<Team | null>(null);

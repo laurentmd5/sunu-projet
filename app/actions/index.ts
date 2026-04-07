@@ -1,5 +1,5 @@
 // Users
-export { checkAndAddUser } from "./users";
+export { syncCurrentUser } from "./users";
 
 // Projects
 export {

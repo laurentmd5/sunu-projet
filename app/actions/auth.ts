@@ -13,6 +13,7 @@ import {
     getSessionCookie,
     clearSessionCookie,
 } from "@/lib/auth-session";
+import { getCurrentAuthIdentity } from "@/lib/auth";
 
 const registerSchema = z.object({
     name: z
@@ -182,4 +183,27 @@ export async function logoutCurrentUser() {
     await clearSessionCookie();
 
     return { success: true };
+}
+
+export async function getAuthenticatedUser() {
+    const identity = await getCurrentAuthIdentity();
+
+    if (!identity?.email) {
+        return null;
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { email: identity.email },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+        },
+    });
+
+    if (!user) {
+        return null;
+    }
+
+    return user;
 }

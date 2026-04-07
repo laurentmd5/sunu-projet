@@ -2,17 +2,14 @@
 
 import { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { checkAndAddUser } from "../actions";
+import { syncCurrentUser } from "../actions/users";
 
 export default function AuthUserSync() {
     const { user } = useUser();
 
     useEffect(() => {
-        const email = user?.primaryEmailAddress?.emailAddress;
-        const name = user?.fullName || user?.firstName || "";
-
-        if (email) {
-            checkAndAddUser(email, name);
+        if (user) {
+            syncCurrentUser();
         }
     }, [user]);
 

@@ -1,10 +1,6 @@
-import { SignIn } from '@clerk/nextjs'
-import AuthWrapper from '@/app/components/AuthWrapper'
+import { redirect } from "next/navigation";
+import { AUTH_ROUTES } from "@/lib/auth-routes";
 
-export default function Page() {
-  return (
-    <AuthWrapper>
-      <SignIn />
-    </AuthWrapper>
-  )
+export default function LegacySignInPage() {
+    redirect(AUTH_ROUTES.login);
 }

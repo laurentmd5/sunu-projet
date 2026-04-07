@@ -1,12 +1,18 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { PUBLIC_AUTH_ROUTE_PATTERNS, AUTH_ROUTES } from "@/lib/auth-routes";
+import { AUTH_ROUTES, PUBLIC_AUTH_ROUTE_PATTERNS } from "@/lib/auth-routes";
 import { AUTH_SESSION_COOKIE } from "@/lib/auth-session";
 
-const isPublicRoute = createRouteMatcher([...PUBLIC_AUTH_ROUTE_PATTERNS]);
+function isPublicPath(pathname: string) {
+    return PUBLIC_AUTH_ROUTE_PATTERNS.some((pattern) => {
+        const normalized = pattern.replace("(.*)", "");
+        return pathname === normalized || pathname.startsWith(`${normalized}/`);
+    });
+}
 
-export default clerkMiddleware(async (auth, request) => {
-    if (isPublicRoute(request)) {
+export default function middleware(request: Request & { nextUrl: URL; cookies: { get(name: string): { value: string } | undefined } }) {
+    const { pathname } = request.nextUrl;
+
+    if (isPublicPath(pathname)) {
         return NextResponse.next();
     }
 
@@ -16,14 +22,9 @@ export default clerkMiddleware(async (auth, request) => {
         return NextResponse.next();
     }
 
-    try {
-        await auth.protect();
-        return NextResponse.next();
-    } catch {
-        const loginUrl = new URL(AUTH_ROUTES.login, request.url);
-        return NextResponse.redirect(loginUrl);
-    }
-});
+    const loginUrl = new URL(AUTH_ROUTES.login, request.url);
+    return NextResponse.redirect(loginUrl);
+}
 
 export const config = {
     matcher: [

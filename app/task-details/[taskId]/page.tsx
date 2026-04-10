@@ -3,7 +3,7 @@ import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskS
 import EmptyState from '@/app/components/EmptyState'
 import UserInfo from '@/app/components/UserInfo'
 import Wrapper from '@/app/components/Wrapper'
-import { Project, ProjectRole, ProjectUserMember, Task } from '@/type'
+import { Project, ProjectRole, ProjectUserMember, Task, TaskStatus } from '@/type'
 import Link from 'next/link'
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactQuill from 'react-quill-new'
@@ -20,9 +20,9 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const [taskId, setTaskId] = useState<string>("")
     const [project, setProject] = useState<Project | null>(null);
     const [members, setMembers] = useState<ProjectUserMember[]>([]);
-    const [status, setStatus] = useState("")
+    const [status, setStatus] = useState<TaskStatus>(TASK_STATUSES.TODO)
     const [solution, setSolution] = useState("")
-    const [realStatus, setRealStatus] = useState("")
+    const [realStatus, setRealStatus] = useState<TaskStatus>(TASK_STATUSES.TODO)
 
     const modules = {
         toolbar: [
@@ -77,7 +77,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         getId()
     }, [params])
 
-    const changeStatus = async (taskId: string, newStatus: string) => {
+    const changeStatus = async (taskId: string, newStatus: TaskStatus) => {
         try {
             await updateTaskStatus(taskId, newStatus)
             fetchInfos(taskId)
@@ -100,20 +100,25 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     );
 
     const handleStatusChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-        const newStatus = event.target.value;
-        setStatus(newStatus)
-        const modal = document.getElementById('my_modal_3') as HTMLDialogElement
+        const newStatus = event.target.value as TaskStatus;
+        setStatus(newStatus);
 
-        if (newStatus === TASK_STATUSES.TODO || newStatus === TASK_STATUSES.IN_PROGRESS) {
-            changeStatus(taskId, newStatus)
-            toast.success('Status changé')
-            modal?.close()
+        const modal = document.getElementById("my_modal_3") as HTMLDialogElement | null;
+
+        if (
+            newStatus === TASK_STATUSES.TODO ||
+            newStatus === TASK_STATUSES.IN_PROGRESS ||
+            newStatus === TASK_STATUSES.IN_REVIEW
+        ) {
+            changeStatus(taskId, newStatus);
+            toast.success("Status changé");
+            modal?.close();
         } else {
-            modal?.showModal()
+            modal?.showModal();
         }
     }
 
-    const closeTask = async (newStatus: string) => {
+    const closeTask = async (newStatus: TaskStatus) => {
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
 
         try {
@@ -213,7 +218,9 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                             >
                                 <option value={TASK_STATUSES.TODO}>À faire</option>
                                 <option value={TASK_STATUSES.IN_PROGRESS}>En cours</option>
+                                <option value={TASK_STATUSES.IN_REVIEW}>En revue</option>
                                 <option value={TASK_STATUSES.DONE}>Terminée</option>
+                                <option value={TASK_STATUSES.CANCELLED}>Annulée</option>
                             </select>
                         </div>
                     </div>

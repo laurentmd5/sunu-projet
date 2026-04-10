@@ -26,8 +26,7 @@ import Link from "next/link";
 
 const ROLE_ORDER: Record<TeamRole, number> = {
     OWNER: 0,
-    MANAGER: 1,
-    MEMBER: 2,
+    MEMBER: 1,
 };
 
 const ROLE_SECTION_META: Record<
@@ -35,14 +34,9 @@ const ROLE_SECTION_META: Record<
     { title: string; icon: React.ReactNode; empty: string }
 > = {
     OWNER: {
-        title: "Propriétaire",
+        title: "Propriétaires",
         icon: <Crown className="w-4 h-4" />,
         empty: "Aucun propriétaire",
-    },
-    MANAGER: {
-        title: "Managers",
-        icon: <ShieldCheck className="w-4 h-4" />,
-        empty: "Aucun manager",
     },
     MEMBER: {
         title: "Membres",
@@ -54,8 +48,8 @@ const ROLE_SECTION_META: Record<
 type PendingRoleChange = {
     memberUserId: string;
     memberName: string;
-    currentRole: "MANAGER" | "MEMBER";
-    newRole: "MANAGER" | "MEMBER";
+    currentRole: "OWNER" | "MEMBER";
+    newRole: "OWNER" | "MEMBER";
 };
 
 type PendingRemoval = {
@@ -135,21 +129,20 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
 
         return {
             OWNER: sorted.filter((member) => member.role === "OWNER"),
-            MANAGER: sorted.filter((member) => member.role === "MANAGER"),
             MEMBER: sorted.filter((member) => member.role === "MEMBER"),
         };
     }, [members]);
 
     const requestRoleChange = (
         member: TeamMember,
-        newRole: "MANAGER" | "MEMBER"
+        newRole: "OWNER" | "MEMBER"
     ) => {
         if (member.role === newRole) return;
 
         setPendingRoleChange({
             memberUserId: member.userId,
             memberName: member.user.name || member.user.email,
-            currentRole: member.role as "MANAGER" | "MEMBER",
+            currentRole: member.role as "OWNER" | "MEMBER",
             newRole,
         });
 
@@ -269,12 +262,12 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
                             onChange={(e) =>
                                 requestRoleChange(
                                     member,
-                                    e.target.value as "MANAGER" | "MEMBER"
+                                    e.target.value as "OWNER" | "MEMBER"
                                 )
                             }
                         >
                             <option value="MEMBER">Membre</option>
-                            <option value="MANAGER">Manager</option>
+                            <option value="OWNER">Propriétaire</option>
                         </select>
 
                         <button
@@ -336,7 +329,7 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
 
                         {canManageMembers ? (
                             <p className="text-xs opacity-70 mt-2 leading-6">
-                                Vous pouvez modifier les rôles des managers et membres, ainsi que retirer des membres de l’équipe.
+                                Vous pouvez modifier les rôles des membres, ainsi que retirer des membres de l’équipe.
                             </p>
                         ) : (
                             <p className="text-xs opacity-70 mt-2 leading-6">
@@ -349,7 +342,7 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
                                 <p className="text-sm opacity-70">Chargement des membres...</p>
                             ) : members.length > 0 ? (
                                 <div className="space-y-5">
-                                    {(["OWNER", "MANAGER", "MEMBER"] as TeamRole[]).map((roleKey) => {
+                                    {(["OWNER", "MEMBER"] as TeamRole[]).map((roleKey) => {
                                         const sectionMembers = groupedMembers[roleKey];
                                         const meta = ROLE_SECTION_META[roleKey];
 
@@ -387,22 +380,17 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
                             <h2 className="text-lg font-semibold">Projets rattachés</h2>
                         </div>
 
-                        {team?.projects && team.projects.length > 0 ? (
-                            <ul className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                                {team.projects.map((project) => (
-                                    <li key={project.id}>
-                                        <ProjectComponent
-                                            project={project}
-                                            admin={0}
-                                            style={true}
-                                        />
-                                    </li>
-                                ))}
-                            </ul>
+                        {team?.project ? (
+                            <div className="rounded-xl border border-base-300 p-4">
+                                <p className="font-medium">{team.project.name}</p>
+                                <Link href={`/project/${team.project.id}`} className="link link-primary">
+                                    Voir le projet
+                                </Link>
+                            </div>
                         ) : (
                             <EmptyState
                                 imageSrc="/empty-project.png"
-                                imageAlt="Aucun projet dans l’équipe"
+                                imageAlt="Aucun projet dans l'équipe"
                                 message="Aucun projet rattaché à cette équipe"
                             />
                         )}
@@ -412,7 +400,7 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
                                 <CalendarDays className="w-4 h-4" />
-                                <h2 className="text-lg font-semibold">Réunions de l’équipe</h2>
+                                <h2 className="text-lg font-semibold">Réunions de l'équipe</h2>
                             </div>
                         </div>
 

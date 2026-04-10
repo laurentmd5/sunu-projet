@@ -55,7 +55,7 @@ const TeamComponent: FC<TeamComponentProps> = ({ team }) => {
                             <FolderKanban className="w-4 h-4" />
                             Projets
                         </div>
-                        <p className="mt-2 text-xl font-semibold">{team.projectsCount ?? team.projects?.length ?? 0}</p>
+                        <p className="mt-2 text-xl font-semibold">{team.project ? 1 : 0}</p>
                     </div>
 
                     <div className="rounded-lg border border-base-300 p-3">

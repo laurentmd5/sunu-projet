@@ -1,6 +1,7 @@
 "use client";
 
 import { Project } from "@/type";
+import { TASK_STATUSES } from "@/lib/task-status";
 import {
     ArrowRight,
     Building2,
@@ -24,6 +25,7 @@ interface ProjectProps {
 
 const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete }) => {
     const [copied, setCopied] = useState(false);
+    const primaryTeam = project.teams?.[0] ?? null;
     const [deleteInput, setDeleteInput] = useState("");
     const modalId = useMemo(() => `delete_project_modal_${project.id}`, [project.id]);
 
@@ -31,11 +33,11 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
     const collaboratorsCount = project.users?.length || 0;
 
     const toDoTasks =
-        project.tasks?.filter((task) => task.status === "To Do").length || 0;
+        project.tasks?.filter((task) => task.status === TASK_STATUSES.TODO).length || 0;
     const inProgressTasks =
-        project.tasks?.filter((task) => task.status === "In Progress").length || 0;
+        project.tasks?.filter((task) => task.status === TASK_STATUSES.IN_PROGRESS).length || 0;
     const doneTasks =
-        project.tasks?.filter((task) => task.status === "Done").length || 0;
+        project.tasks?.filter((task) => task.status === TASK_STATUSES.DONE).length || 0;
 
     const progressPercentage =
         totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
@@ -105,10 +107,10 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
                             </p>
                         )}
 
-                        {project.team ? (
+                        {primaryTeam ? (
                             <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-lg border border-base-300 px-3 py-2 text-sm">
                                 <Building2 className="w-4 h-4 shrink-0" />
-                                <span className="truncate">Équipe : {project.team.name}</span>
+                                <span className="truncate">Équipe : {primaryTeam.name}</span>
                             </div>
                         ) : null}
                     </div>

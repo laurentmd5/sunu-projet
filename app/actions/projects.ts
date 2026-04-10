@@ -94,7 +94,7 @@ export async function getProjectsCreatedByUSer() {
                         },
                     },
                 },
-                team: {
+                teams: {
                     select: {
                         id: true,
                         name: true,
@@ -223,7 +223,7 @@ export async function getProjectsAssociatedWithUser() {
                         },
                     },
                 },
-                team: {
+                teams: {
                     select: {
                         id: true,
                         name: true,
@@ -274,7 +274,7 @@ export async function getProjectInfo(idProject: string, details: boolean) {
                       },
                   },
                   createdBy: true,
-                  team: {
+                  teams: {
                       select: {
                           id: true,
                           name: true,
@@ -283,12 +283,14 @@ export async function getProjectInfo(idProject: string, details: boolean) {
                           createdAt: true,
                           updatedAt: true,
                           createdById: true,
+                          projectId: true,
+                          parentId: true,
                       },
                   },
               }
             : {
                   createdBy: true,
-                  team: {
+                  teams: {
                       select: {
                           id: true,
                           name: true,

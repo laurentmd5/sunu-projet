@@ -31,7 +31,6 @@ export {
     getTeamMembers,
     updateTeamMemberRole,
     removeTeamMember,
-    attachProjectToTeam,
 } from "./teams";
 
 // Meetings

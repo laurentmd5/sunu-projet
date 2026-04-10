@@ -4,6 +4,7 @@ import { ActionError, getCurrentDbUser } from "@/lib/permissions";
 export const PROJECT_ROLES = {
     OWNER: "OWNER",
     MANAGER: "MANAGER",
+    VIEWER: "VIEWER",
     MEMBER: "MEMBER",
 } as const;
 
@@ -39,14 +40,17 @@ export async function assertHasProjectRole(
     const membership = await getProjectMembership(projectId);
 
     if (!allowedRoles.includes(membership.role as ProjectRole)) {
-        throw new ActionError("Vous n'avez pas les droits suffisants pour cette action.", 403);
+        throw new ActionError(
+            "Vous n'avez pas les droits suffisants pour cette action.",
+            403
+        );
     }
 
     return membership;
 }
 
 export async function canManageProject(projectId: string) {
-    return assertHasProjectRole(projectId, ["OWNER", "MANAGER"]);
+    return assertHasProjectRole(projectId, [PROJECT_ROLES.OWNER, PROJECT_ROLES.MANAGER]);
 }
 
 export async function canAdminProject(projectId: string) {

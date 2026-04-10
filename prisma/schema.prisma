@@ -17,7 +17,6 @@ enum ProjectRole {
 
 enum TeamRole {
   OWNER
-  MANAGER
   MEMBER
 }
 
@@ -97,15 +96,10 @@ model Team {
   createdById String @db.VarChar(36)
   createdBy   User   @relation("CreatedTeams", fields: [createdById], references: [id])
 
-  // V2 additions - nullable for safe migration
-  projectId String? @db.VarChar(36)
+  projectId String @db.VarChar(36)
   parentId  String? @db.VarChar(36)
 
-  // Legacy V1 relation: Project.teamId -> Team.id
-  projects Project[] @relation("LegacyProjectTeam")
-
-  // V2 relation: Team.projectId -> Project.id
-  project Project? @relation("ProjectTeams", fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation("ProjectTeams", fields: [projectId], references: [id], onDelete: Cascade)
 
   parent   Team?  @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children Team[] @relation("TeamHierarchy")
@@ -141,19 +135,13 @@ model Project {
   updatedAt   DateTime @updatedAt
   inviteCode  String   @unique @db.VarChar(50)
 
-  // V2 additions
-  status    ProjectStatus?
+  status    ProjectStatus @default(ACTIVE)
   startDate DateTime?
   endDate   DateTime?
 
   createdById String @db.VarChar(36)
   createdBy   User   @relation("UserProjects", fields: [createdById], references: [id])
 
-  // Legacy V1 relation kept during migration
-  teamId String? @db.VarChar(36)
-  team   Team?   @relation("LegacyProjectTeam", fields: [teamId], references: [id], onDelete: SetNull)
-
-  // New V2 relation
   teams Team[] @relation("ProjectTeams")
 
   tasks        Task[]
@@ -166,18 +154,17 @@ model Project {
 }
 
 model Task {
-  id                  String    @id @default(uuid()) @db.VarChar(36)
+  id                  String      @id @default(uuid()) @db.VarChar(36)
   name                String
   description         String
-  status              String    @default("To Do")
+  status              TaskStatus  @default(TODO)
   dueDate             DateTime?
   solutionDescription String?
 
-  // V2 additions
-  priority    TaskPriority?
+  priority    TaskPriority @default(MEDIUM)
   tags        Json?
-  milestoneId String?       @db.VarChar(36)
-  teamId      String?       @db.VarChar(36)
+  milestoneId String?      @db.VarChar(36)
+  teamId      String?      @db.VarChar(36)
 
   projectId   String  @db.VarChar(36)
   userId      String? @db.VarChar(36)
@@ -308,6 +295,14 @@ enum ProjectStatus {
   COMPLETED
   ARCHIVED
   ON_HOLD
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  CANCELLED
 }
 
 enum TaskPriority {

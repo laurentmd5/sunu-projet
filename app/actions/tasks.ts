@@ -15,9 +15,17 @@ const createTaskSchema = z.object({
     assignToEmail: z.string().email("Email invalide").optional(),
 });
 
+const taskStatusSchema = z.enum([
+    "To Do",
+    "In Progress",
+    "In Review",
+    "Done",
+    "Cancelled",
+]);
+
 const updateTaskStatusSchema = z.object({
     taskId: z.string().min(1, "L'ID de la tâche est requis"),
-    newStatus: z.string().min(1, "Le nouveau statut est requis"),
+    newStatus: taskStatusSchema,
     solutionDescription: z.string().optional(),
 });
 
@@ -172,7 +180,7 @@ export const getTaskDetails = async (taskId: string) => {
 
 export const updateTaskStatus = async (
     taskId: string,
-    newStatus: string,
+    newStatus: "To Do" | "In Progress" | "In Review" | "Done" | "Cancelled",
     solutionDescription?: string
 ) => {
     const parsed = updateTaskStatusSchema.parse({
@@ -204,7 +212,9 @@ export const updateTaskStatus = async (
         data: {
             status: parsed.newStatus,
             solutionDescription:
-                parsed.newStatus === TASK_STATUSES.DONE ? parsed.solutionDescription : null,
+                parsed.newStatus === TASK_STATUSES.DONE
+                    ? parsed.solutionDescription?.trim() || null
+                    : null,
         },
     });
 

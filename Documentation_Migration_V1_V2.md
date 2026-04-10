@@ -1,626 +1,456 @@
 # Documentation de travail — Migration Sunu Projets V1 → V2
 
-## Périmètre de ce document
+## Périmètre du document
 
-Ce document synthétise **tout le travail réalisé dans ce chat** autour de la migration de **Sunu Projets** entre la **V1** et la **V2**, avec un focus principal sur :
+Ce document synthétise l’avancement technique de la migration **Sunu Projets V1 → V2** avec un focus sur :
 
-- l’analyse documentaire de la cible V2 ;
-- la comparaison entre le modèle actuel et le modèle cible ;
-- la définition de la stratégie de migration ;
-- la conception du **Lot 1 — Migration Prisma non destructive** ;
-- les difficultés rencontrées avec Prisma Migrate ;
-- la méthode retenue pour appliquer le schéma V2 sans reset de la base ;
-- le résultat final obtenu.
+- l’analyse de la cible V2 et des écarts avec la V1 ;
+- la mise à niveau du schéma Prisma ;
+- la stratégie de migration retenue ;
+- la migration des données minimales V1 → V2 ;
+- la stabilisation du code applicatif autour du modèle V2 final ;
+- le nettoyage de l’historique Prisma local ;
+- l’état final obtenu après validation TypeScript et vérifications fonctionnelles.
 
-Ce document sert de **base de documentation technique** pour la migration globale. Il pourra être enrichi ensuite avec les travaux issus des autres chats concernant les lots suivants : backfill de données, rôles/permissions, équipes V2, tâches V2, notifications, réunions, dashboard owner, nettoyage legacy.
+Ce document constitue une base technique de référence pour la suite du chantier V2.
 
 ---
 
 # 1. Contexte général
 
-## 1.1 Contexte produit
+## 1.1 Objectif produit de la V2
 
-Sunu Projets est une application de gestion de projets d’entreprise. La migration V1 → V2 vise à faire évoluer l’architecture métier afin de :
+La V2 de Sunu Projets vise à faire évoluer l’architecture métier afin de :
 
-- recentrer le modèle sur `Project` comme entité racine ;
-- intégrer un rôle `VIEWER` avec permissions granulaires ;
-- rattacher les équipes au projet ;
-- enrichir fortement le modèle de tâches ;
-- introduire des notifications in-app ;
-- préparer un dashboard propriétaire consolidé.
+- recentrer le système sur `Project` comme entité racine ;
+- introduire le rôle `VIEWER` avec permissions granulaires ;
+- rattacher les équipes aux projets ;
+- permettre une hiérarchie d’équipes limitée à 2 niveaux ;
+- enrichir fortement les tâches ;
+- préparer les notifications in-app ;
+- préparer le futur dashboard propriétaire consolidé.
 
-## 1.2 Règles de lecture des sources
+## 1.2 Hiérarchie des sources
 
-Les sources de référence ont été hiérarchisées ainsi :
+Les sources ont été interprétées dans l’ordre suivant :
 
-1. `sunu_projets_v2.pptx` = **source d’autorité fonctionnelle principale** ;
-2. `sunu_projets_v2_analyse.pdf` = **source secondaire complémentaire** ;
-3. documentation analytique V1 (`ANALYSE_CONCEPTION_COMPLETE.md`, `ANALYSE_RELATIONS_FLUX.md`, `ARCHITECTURE_AVANCEE.md`, etc.) = **source historique technique** décrivant l’existant.
+1. `sunu_projets_v2.pptx` = source fonctionnelle principale ;
+2. `sunu_projets_v2_analyse.pdf` = source complémentaire ;
+3. documentation analytique V1 = source historique décrivant l’existant.
 
-Règle d’arbitrage retenue :
+Règle d’arbitrage :
 
-- en cas de conflit entre PPTX et PDF, **le PPTX V2 prime** ;
-- en cas de conflit entre documents V2 et documents V1, **les documents V2 priment** ;
-- les anciens éléments liés à Clerk dans la documentation historique ne doivent plus être considérés comme des cibles actuelles, car le projet utilise désormais une **authentification locale native**.
-
----
-
-# 2. Travaux réalisés au début du chantier dans ce chat
-
-## 2.1 Analyse et consolidation documentaire de la cible V2
-
-Le travail a commencé par une reprise structurée des documents de cadrage afin d’éviter de patcher Prisma sur une compréhension partielle du produit.
-
-Les objectifs de cette phase étaient :
-
-- relire les documents sources ;
-- verrouiller les règles de priorité entre les sources ;
-- distinguer clairement la cible V2 du fonctionnement historique V1 ;
-- isoler les parties obsolètes de la documentation, notamment les références à Clerk.
-
-## 2.2 Reconstruction propre de la cible métier V2
-
-La cible métier V2 a été reformulée proprement autour des principes suivants :
-
-- `Project` devient l’entité centrale de l’architecture ;
-- les `Team` ne sont plus pensées comme des entités indépendantes, mais comme des structures rattachées à un projet ;
-- apparition du rôle `VIEWER` avec permissions granulaires ;
-- enrichissement du modèle `Task` : priorité, tags, jalons, commentaires, statuts étendus ;
-- ajout des notifications in-app en complément des emails ;
-- préparation d’un futur dashboard owner avec score de santé et métriques consolidées.
-
-## 2.3 Identification des écarts V1 → V2
-
-Une comparaison structurée entre l’architecture actuelle et la cible V2 a permis d’identifier les écarts majeurs :
-
-- passage d’un modèle partiellement séparé `Project` / `Team` à un modèle project-centric ;
-- ajout du rôle `VIEWER` dans la logique projet ;
-- simplification/repositionnement futur de `TeamMember` ;
-- enrichissement important de `Task` ;
-- extension de `ActivityLog` ;
-- ajout de nouvelles entités V2 (`Milestone`, `TaskComment`, `ViewerPermissionGrant`, `MeetingParticipant`, `Notification`).
-
-## 2.4 Définition du plan global de migration
-
-Une stratégie progressive a été retenue avec l’ordre logique suivant :
-
-1. migration Prisma / schéma ;
-2. migration de données / backfill ;
-3. permissions / rôles / logique métier ;
-4. front-end ;
-5. validation et nettoyage final.
-
-Décision importante : **ne pas démarrer par le dashboard** ni par des vues analytiques tant que la base métier n’est pas stabilisée.
-
-## 2.5 Découpage en lots techniques
-
-Le chantier global a été découpé en lots :
-
-- Lot 0 — verrouillage des règles métier V2 ;
-- Lot 1 — Prisma non destructif ;
-- Lot 2 — backfill / migration de données ;
-- Lot 3 — permissions / rôles / VIEWER ;
-- Lot 4 — équipes V2 ;
-- Lot 5 — tâches V2 ;
-- Lot 6 — notifications ;
-- Lot 7 — réunions ;
-- Lot 8 — dashboard owner ;
-- Lot 9 — validation / nettoyage legacy.
-
-Dans ce chat, le travail a surtout porté sur **le Lot 1**.
+- en cas de conflit entre PPTX et PDF, le PPTX V2 prime ;
+- en cas de conflit entre V2 et V1, la V2 prime ;
+- les anciens éléments documentaires non alignés avec l’état réel du projet sont considérés comme historiques uniquement.
 
 ---
 
-# 3. Analyse du schéma Prisma réel avant migration
+# 2. Cible V2 retenue
 
-## 3.1 Pourquoi cette étape était nécessaire
+## 2.1 Principes structurants
 
-Avant de proposer une migration, il a fallu vérifier le **schéma réel du dépôt**, et non seulement la documentation historique.
+La cible V2 retenue repose sur les principes suivants :
 
-Cette étape a permis d’éviter plusieurs erreurs de conception, car le code réel ne correspondait plus totalement à l’état décrit dans certains anciens documents.
+- `Project` devient l’entité centrale ;
+- les `Team` sont rattachées aux projets ;
+- `ProjectRole` devient `OWNER | MANAGER | VIEWER | MEMBER` ;
+- `TeamRole` est simplifié à `OWNER | MEMBER` ;
+- `TaskStatus` devient `TODO | IN_PROGRESS | IN_REVIEW | DONE | CANCELLED` ;
+- `TaskPriority` devient `LOW | MEDIUM | HIGH | CRITICAL` ;
+- les tâches peuvent être enrichies avec priorité, tags, jalons, équipe et commentaires ;
+- `ActivityLog` peut porter des métadonnées JSON ;
+- de nouvelles tables apparaissent pour les permissions VIEWER, jalons, commentaires, participants de réunion et notifications.
 
-## 3.2 Constats sur le schéma existant
-
-Le schéma Prisma réel montrait notamment :
-
-- une base MySQL déjà en place ;
-- un modèle `Project`, `Task`, `Team`, `TeamMember`, `ProjectUser`, `TeamMeeting`, `MeetingRecording`, `ActivityLog` correspondant à la V1 actuelle ;
-- la présence d’une **auth locale native** via `AuthCredential` et `Session` ;
-- un `MeetingProvider` limité à `NONE` et `JITSI` ;
-- un `Task.status` encore stocké comme `String` ;
-- une relation legacy `Project.teamId -> Team.id` encore active ;
-- aucune migration Prisma historisée localement dans `prisma/migrations`.
-
-## 3.3 Décisions de conception prises à partir du schéma réel
-
-À partir de cette lecture, plusieurs décisions ont été prises :
-
-- conserver `AuthCredential` et `Session` totalement intacts ;
-- ne pas modifier `MeetingProvider` au Lot 1 ;
-- conserver temporairement la relation legacy `Project.teamId` ;
-- ajouter la nouvelle logique `Team.projectId` sans casser la V1 ;
-- conserver `Task.status` en `String` au Lot 1 pour éviter une migration destructrice ou trop invasive ;
-- repousser la simplification stricte de `TeamMember.role` à un lot ultérieur.
-
----
-
-# 4. Cible V2 retenue dans ce chat
-
-## 4.1 Entités et champs à introduire au Lot 1
-
-La cible retenue pour le Lot 1 était d’étendre le schéma afin qu’il puisse accueillir la V2 sans casser la V1.
-
-Les changements retenus étaient :
-
-### `Project`
-- ajout de `status` ;
-- ajout de `startDate` ;
-- ajout de `endDate`.
-
-### `ProjectUser`
-- ajout du rôle `VIEWER` ;
-- ajout de `inviteToken` nullable.
-
-### `Team`
-- ajout de `projectId` nullable au début ;
-- ajout de `parentId` nullable.
-
-### `Task`
-- ajout de `priority` ;
-- ajout de `tags` ;
-- ajout de `milestoneId` ;
-- ajout de `teamId`.
-
-### `ActivityLog`
-- ajout de `metadata` JSON nullable.
-
-### Nouvelles tables
-- `ViewerPermissionGrant` ;
-- `Milestone` ;
-- `TaskComment` ;
-- `MeetingParticipant` ;
-- `Notification`.
-
-## 4.2 Points ambigus entre PPTX et PDF
-
-Certains points ont été arbitré selon la hiérarchie des sources.
+## 2.2 Points d’arbitrage importants
 
 ### `TeamMeeting.projectId`
-- le PPTX indique un `projectId` **optionnel** ;
-- le PDF contient une formulation plus stricte ;
-- décision retenue : **rester sur un `projectId` optionnel**, conformément au PPTX.
+Décision retenue : `projectId` reste **optionnel**, conformément au PPTX V2.
 
-### Permissions du `VIEWER`
-- le PPTX mentionne `CREATE_TASK` parmi les permissions du VIEWER ;
-- le PDF détaillé est moins cohérent sur ce point ;
-- décision retenue : **prévoir `CREATE_TASK` dans l’enum de permissions** dès le Lot 1, même si la logique métier détaillée viendra plus tard.
+### `TeamRole`
+Décision retenue : le rôle d’équipe final est réduit à :
 
----
+- `OWNER`
+- `MEMBER`
 
-# 5. Stratégie de migration retenue pour le Lot 1
+### `Task.status`
+Décision retenue : après migration finale, les seuls statuts valides sont :
 
-## 5.1 Principe général
-
-La migration devait être :
-
-- progressive ;
-- non destructive ;
-- compatible avec la base existante ;
-- sans reset ;
-- sans suppression brutale des structures V1 ;
-- compatible avec la préservation des données en place.
-
-## 5.2 Règles appliquées
-
-Les règles suivantes ont été suivies :
-
-- tout nouveau champ devait être nullable au début si possible ;
-- les nouvelles tables devaient pouvoir exister sans dépendre immédiatement du code V1 ;
-- les anciennes structures nécessaires au runtime ne devaient pas être supprimées ;
-- les changements de rôle et de statuts trop risqués devaient être reportés à un lot ultérieur.
-
-## 5.3 Choix prudents retenus
-
-- `Task.status` conservé en `String` ;
-- `Team.projectId` ajouté mais non obligatoire au départ ;
-- `TeamMember.role` non simplifié immédiatement ;
-- relation legacy `Project.teamId` conservée ;
-- `tags` stockés en `Json?` ;
-- nouveaux enums ajoutés mais sans imposer immédiatement toute la logique métier associée.
+- `TODO`
+- `IN_PROGRESS`
+- `IN_REVIEW`
+- `DONE`
+- `CANCELLED`
 
 ---
 
-# 6. Conception du patch `schema.prisma`
+# 3. Stratégie de migration retenue
 
-## 6.1 Patch conçu
+## 3.1 Découpage logique
 
-Le patch `schema.prisma` a été préparé pour introduire :
+La migration a été traitée dans l’ordre suivant :
 
-### Nouveaux enums
-- `ProjectStatus` ;
-- `TaskPriority` ;
-- `MilestoneStatus` ;
-- `ViewerPermission` ;
-- extension de `ProjectRole` avec `VIEWER` ;
-- enrichissement de `ActivityType` avec les nouveaux événements V2.
+1. migration de schéma ;
+2. migration / normalisation minimale des données ;
+3. resserrage du schéma final ;
+4. réalignement du runtime ;
+5. réalignement du front ;
+6. validation TypeScript et tests de fonctionnement.
 
-### Nouvelles relations
-- relation V2 `Team.projectId -> Project.id` ;
-- relation hiérarchique `Team.parentId -> Team.id` ;
-- relation `Task.milestoneId -> Milestone.id` ;
-- relation `Task.teamId -> Team.id` ;
-- relation `MeetingParticipant -> TeamMeeting / User` ;
-- relation `ViewerPermissionGrant -> ProjectUser` ;
-- relation `Notification -> User`.
+## 3.2 Principes appliqués
 
-### Nouvelles tables et nouveaux champs
-Le patch a bien introduit l’ensemble du périmètre non destructif du Lot 1.
+Les principes suivants ont été respectés :
 
-## 6.2 Double relation `Project` ↔ `Team`
-
-Le point le plus sensible du patch a été la coexistence temporaire de deux logiques relationnelles :
-
-- la relation legacy V1 : `Project.teamId -> Team.id` ;
-- la relation V2 : `Team.projectId -> Project.id`.
-
-Pour éviter toute ambiguïté Prisma, il a fallu **nommer explicitement les relations** dans le schéma.
+- séparer schéma, backfill et resserrage final ;
+- éviter les suppressions destructrices au début ;
+- rendre les scripts de backfill idempotents ;
+- conserver les éléments legacy tant qu’ils étaient encore nécessaires au runtime ;
+- verrouiller le modèle final seulement après validation des données.
 
 ---
 
-# 7. Validation initiale du schéma patché
+# 4. Migration de schéma
 
-## 7.1 Commandes exécutées
+## 4.1 Première phase : schéma V2 additif
 
-Après application du patch sur `schema.prisma`, plusieurs commandes Prisma ont été exécutées :
+Une première migration SQL additive a été conçue pour introduire les structures V2 sans casser immédiatement la V1.
 
-- `npx prisma format`
-- `npx prisma validate`
-- `npx prisma generate`
+### Ajouts principaux
 
-## 7.2 Résultat
-
-Ces trois commandes ont fonctionné correctement, ce qui a confirmé que :
-
-- le schéma était syntaxiquement valide ;
-- Prisma Client pouvait être généré ;
-- le problème ne venait donc pas de la structure du schéma lui-même.
-
----
-
-# 8. Problème rencontré avec Prisma Migrate
-
-## 8.1 Symptôme
-
-Lors de la tentative de lancement de :
-
-```bash
-npx prisma migrate dev --name lot1_v2_non_destructive
-```
-
-Prisma a détecté un **drift** et a proposé un reset de la base.
-
-## 8.2 Cause réelle
-
-Le problème venait du fait que :
-
-- la base MySQL existait déjà et contenait toutes les tables V1 ;
-- mais le projet n’avait **aucun historique local de migrations** ;
-- Prisma Migrate ne savait donc pas comment relier l’état réel de la base à un historique versionné.
-
-Autrement dit, la base existait, mais Prisma ne possédait pas son “historique narratif”.
-
-## 8.3 Décision prise
-
-Décision explicite : **ne pas utiliser `prisma migrate reset`**, afin de ne pas perdre les données existantes.
-
-Une stratégie alternative a donc été retenue.
-
----
-
-# 9. Tentative de baseline et limites de cette approche
-
-## 9.1 Mise en place d’une baseline
-
-Une baseline technique a été créée pour essayer de donner à Prisma un point de départ minimal dans `prisma/migrations`.
-
-## 9.2 Limite rencontrée
-
-Le problème est que la baseline avait été générée **à partir du schéma déjà patché V2**, alors que la base réelle était encore en V1.
-
-Conséquence :
-
-- Prisma comparait une base V1 réelle à un historique qui disait déjà “V2 attendue” ;
-- cela provoquait encore du drift.
-
-## 9.3 Conclusion
-
-La baseline seule n’était donc pas suffisante pour appliquer proprement le Lot 1 dans ce contexte.
-
----
-
-# 10. Méthode alternative retenue : diff SQL V1 → V2
-
-## 10.1 Changement de stratégie
-
-Plutôt que de forcer `migrate dev`, la méthode suivante a été retenue :
-
-1. figer le schéma V1 dans un fichier dédié ;
-2. comparer ce schéma V1 au nouveau `schema.prisma` V2 patché ;
-3. générer un script SQL de diff ;
-4. relire manuellement ce script ;
-5. exécuter le script directement contre la base.
-
-## 10.2 Création d’un schéma de référence V1
-
-Un fichier `prisma/schema.v1.prisma` a été créé afin de conserver une représentation fidèle du schéma historique avant patch.
-
-## 10.3 Génération du script SQL de migration
-
-La commande Prisma `migrate diff` a été utilisée pour générer le SQL de transformation entre :
-
-- `schema.v1.prisma`
-- `schema.prisma`
-
-## 10.4 Contrôle manuel du script
-
-Le script généré a été relu pour vérifier qu’il ne contenait pas :
-
-- de `DROP TABLE` ;
-- de `DROP COLUMN` ;
-- de reset ;
-- d’opérations destructrices non souhaitées.
-
-Le contenu attendu était bien composé de :
-
-- `ALTER TABLE ... ADD COLUMN ...` ;
-- `CREATE TABLE ...` ;
-- `CREATE INDEX ...` ;
-- `ALTER TABLE ... ADD CONSTRAINT ...`.
-
----
-
-# 11. Incident sur le fichier SQL généré sous PowerShell
-
-## 11.1 Symptôme
-
-Même après génération du SQL, il a été constaté que le fichier avait un comportement anormal.
-
-La commande `prisma db execute` retournait un succès, mais les différences restaient visibles lors des comparaisons Prisma.
-
-## 11.2 Cause exacte
-
-Le fichier SQL avait été écrit sous une forme incorrecte :
-
-- tous les blocs `-- AlterTable`, `-- CreateTable`, etc. se retrouvaient sur une seule ligne ;
-- en SQL, `--` commente tout le reste de la ligne ;
-- comme le fichier ne contenait pas de vrais retours à la ligne, une grande partie du script était en réalité neutralisée comme commentaire.
-
-## 11.3 Conséquence
-
-- `prisma db execute` n’échouait pas ;
-- mais le script n’était quasiment pas exécuté ;
-- Prisma détectait toujours les différences après coup.
-
-## 11.4 Résolution
-
-Le fichier SQL a été **réécrit correctement avec de vrais sauts de ligne**, ce qui a permis de transformer le contenu en instructions SQL réellement exécutables.
-
-Exemple du format corrigé :
-
-```sql
--- AlterTable
-ALTER TABLE `Team` ADD COLUMN `parentId` VARCHAR(36) NULL,
-    ADD COLUMN `projectId` VARCHAR(36) NULL;
-```
-
-À partir de là, le script est devenu exploitable par MariaDB / MySQL.
-
----
-
-# 12. Application effective du Lot 1
-
-## 12.1 Exécution du script SQL corrigé
-
-Une fois le fichier SQL correctement écrit, il a été exécuté avec :
-
-```bash
-npx prisma db execute --file prisma/lot1_v2_non_destructive.sql --schema prisma/schema.prisma
-```
-
-Résultat : exécution réussie.
-
-## 12.2 Vérifications réalisées ensuite
-
-Après exécution, les commandes suivantes ont été relancées :
-
-- `npx prisma validate`
-- `npx prisma generate`
-- `npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma`
-
-## 12.3 Résultat final
-
-La comparaison finale Prisma a retourné :
-
-- **No difference detected**
-
-Cela signifie que :
-
-- la base est maintenant alignée avec le `schema.prisma` patché ;
-- le Lot 1 a bien été appliqué ;
-- le schéma étendu V2 est désormais effectivement en place en base.
-
----
-
-# 13. Changements effectivement appliqués au Lot 1
-
-## 13.1 Colonnes ajoutées
-
-### `Team`
-- `parentId`
-- `projectId`
-
-### `Project`
-- `endDate`
-- `startDate`
+#### `Project`
 - `status`
+- `startDate`
+- `endDate`
 
-### `Task`
-- `milestoneId`
+#### `ProjectUser`
+- ajout du rôle `VIEWER`
+- `inviteToken`
+
+#### `Team`
+- `projectId`
+- `parentId`
+
+#### `Task`
 - `priority`
 - `tags`
+- `milestoneId`
 - `teamId`
 
-### `ProjectUser`
-- `inviteToken`
-- évolution de l’enum `role` avec `VIEWER`
-
-### `ActivityLog`
+#### `ActivityLog`
 - `metadata`
-- enrichissement de l’enum `type`
 
-## 13.2 Tables créées
-
+### Nouvelles tables
+- `ViewerPermissionGrant`
 - `Milestone`
 - `TaskComment`
-- `ViewerPermissionGrant`
 - `MeetingParticipant`
 - `Notification`
 
-## 13.3 Index créés
+## 4.2 Migration finale de resserrage
 
-Ont notamment été ajoutés :
+Une fois les données remises en cohérence, le schéma a été resserré afin d’atteindre le modèle V2 final.
 
-- index sur `Team.projectId`
-- index sur `Team.parentId`
-- index sur `Project.status`
-- index sur `Task.milestoneId`
-- index sur `Task.teamId`
-- index sur `Task.priority`
-- index sur `ProjectUser.inviteToken`
-- index sur `ProjectUser(projectId, role)`
-- index sur `ActivityLog.actorUserId`
+### Changements verrouillés
+- `Team.projectId` devient obligatoire ;
+- `TeamMember.role` est réduit à `OWNER | MEMBER` ;
+- `Task.status` est réduit aux seuls statuts V2 ;
+- `Project.status` devient non nullable avec défaut `ACTIVE` ;
+- `Task.priority` devient non nullable avec défaut `MEDIUM`.
 
-## 13.4 Clés étrangères ajoutées
+---
 
-Ont été ajoutées les foreign keys nécessaires pour :
+# 5. Migration de données et backfill
 
-- `Team.projectId`
-- `Team.parentId`
+## 5.1 Contexte de données
+
+La base ne contenait pas de données critiques. Cela a permis d’adopter une stratégie simple et sûre, sans contrainte de conservation métier forte.
+
+## 5.2 Scripts réalisés
+
+### Script 01 — normalisation des statuts et rôles
+Ce script a réalisé :
+
+- `To Do` → `TODO`
+- `In Progress` → `IN_PROGRESS`
+- `Done` → `DONE`
+- `TeamMember.MANAGER` → `OWNER`
+
+### Script 02 — remplissage des nouveaux champs
+Ce script a réalisé :
+
+- `Task.priority = MEDIUM` si vide ;
+- `Project.status = ACTIVE` si vide ;
+- remise à `null` contrôlée de certains champs transitoires (`parentId`, `milestoneId`, `teamId`, `inviteToken`, `metadata`) dans le cadre du backfill minimal V2.
+
+### Script 03 — rattachement des équipes aux projets
+Ce script a permis de remplir `Team.projectId` en utilisant :
+
+- l’ancien lien historique lorsqu’il existait ;
+- un fallback contrôlé en cas de projet unique.
+
+Résultat constaté :
+- les équipes existantes ont été rattachées correctement ;
+- aucun cas non résolu n’est resté sur l’échantillon traité.
+
+### Script 04 — contrôles post-migration
+Ce script a validé :
+
+- absence de projets sans `status` ;
+- absence de tâches sans `priority` ;
+- absence d’équipes sans projet ;
+- absence de statuts tâche legacy ;
+- absence de rôle `MANAGER` résiduel dans `TeamMember` ;
+- absence de références cassées vers projet, équipe ou jalon.
+
+Résultat obtenu : contrôles post-migration validés.
+
+---
+
+# 6. Refonte de l’historique Prisma local
+
+## 6.1 Problème rencontré
+
+L’historique local de migrations Prisma n’était pas cohérent avec l’état réel de la base, ce qui empêchait `prisma migrate dev` de reconstruire correctement une shadow database.
+
+## 6.2 Méthode retenue
+
+La solution retenue a été :
+
+- nettoyer l’ancien historique local cassé ;
+- repartir d’un `schema.prisma` finalisé ;
+- réinitialiser la base de développement locale ;
+- recréer une migration baseline propre.
+
+## 6.3 Résultat
+
+Une nouvelle migration baseline propre a été générée et appliquée :
+
+- base locale réinitialisée correctement ;
+- schéma Prisma final synchronisé ;
+- historique de migrations nettoyé ;
+- génération Prisma Client validée.
+
+---
+
+# 7. Alignement du schéma Prisma final
+
+Le `schema.prisma` a été réaligné sur le modèle V2 final.
+
+## 7.1 Évolutions principales
+
+### `ProjectRole`
+- `OWNER`
+- `MANAGER`
+- `VIEWER`
+- `MEMBER`
+
+### `TeamRole`
+- `OWNER`
+- `MEMBER`
+
+### `TaskStatus`
+- `TODO`
+- `IN_PROGRESS`
+- `IN_REVIEW`
+- `DONE`
+- `CANCELLED`
+
+### Relations
+- suppression de la logique legacy `Project.teamId` du modèle final ;
+- `Project` expose `teams[]` ;
+- `Team` appartient à un `project` ;
+- `Team.parentId` permet la hiérarchie 2 niveaux.
+
+### Champs V2 stabilisés
+- `Project.status`
+- `Project.startDate`
+- `Project.endDate`
+- `Task.priority`
+- `Task.tags`
 - `Task.milestoneId`
 - `Task.teamId`
-- `Milestone.projectId`
-- `TaskComment.taskId`
-- `TaskComment.authorId`
-- `ViewerPermissionGrant.projectUserId`
-- `MeetingParticipant.meetingId`
-- `MeetingParticipant.userId`
-- `Notification.userId`
+- `ActivityLog.metadata`
 
 ---
 
-# 14. Ce qui a été volontairement laissé pour plus tard
+# 8. Alignement du runtime et du front sur la V2
 
-## 14.1 Éléments non traités au Lot 1
+Après stabilisation du schéma, le code applicatif a été mis à niveau pour refléter le modèle final.
 
-Afin de préserver la stabilité, plusieurs transformations ont été volontairement reportées :
+## 8.1 Fichiers partagés et helpers
 
-- backfill des nouveaux champs (`Project.status`, `Task.priority`, etc.) ;
-- rattachement effectif des équipes existantes via `Team.projectId` ;
-- simplification stricte de `TeamMember.role` ;
-- conversion métier complète des statuts de tâches ;
-- activation réelle des permissions `VIEWER` dans les Server Actions ;
-- implémentation des notifications in-app côté métier/front ;
-- logique complète de commentaires de tâche, jalons et participants de réunion.
+Les éléments suivants ont été réalignés :
 
-## 14.2 Structures legacy maintenues
+- `type.ts`
+- `lib/project-roles.ts`
+- `lib/team-roles.ts`
+- `lib/task-status.ts`
+- `lib/prisma.ts`
+- `lib/team-role-labels.ts`
+- `lib/permissions.ts`
+- `lib/validations.ts`
 
-Sont restées en place :
+### Ajustements majeurs
+- ajout de `VIEWER` dans les helpers de rôles projet ;
+- suppression de `MANAGER` des rôles d’équipe ;
+- remplacement des anciens statuts texte par les statuts V2 ;
+- assouplissement ciblé des types front sur `Project.teams` pour accepter des sélections Prisma partielles ;
+- suppression du recours au client généré legacy dans `prisma/generated/client` au profit de `@prisma/client`.
 
-- la relation legacy `Project.teamId` ;
-- le stockage actuel de `Task.status` ;
-- les rôles historiques de `TeamMember` ;
-- les modèles d’auth locale `AuthCredential` et `Session` inchangés.
+## 8.2 Actions serveur
 
----
+Les actions suivantes ont été réalignées :
 
-# 15. Difficultés techniques rencontrées dans ce chat
+- `tasks.ts`
+- `teams.ts`
+- `meetings.ts`
+- `members.ts`
+- `projects.ts`
+- `index.ts`
 
-## 15.1 Base existante sans historique de migrations
+### Ajustements majeurs
+- validation stricte des statuts V2 dans les actions de tâche ;
+- suppression des références à `Project.teamId` ;
+- passage de `project.team` à `project.teams` ;
+- suppression de l’ancienne logique `attachProjectToTeam` devenue obsolète ;
+- adaptation des contrôles de rôle d’équipe au modèle `OWNER | MEMBER` ;
+- prise en charge de `VIEWER` dans les rôles projet.
 
-C’est la difficulté principale du chantier : Prisma Migrate est plus simple lorsqu’il pilote une base depuis le départ ou avec un historique versionné cohérent. Ici, il a fallu gérer une base déjà vivante sans historique local.
+## 8.3 Pages et composants front
 
-## 15.2 Pièges PowerShell sur la génération du SQL
+Les pages et composants principaux ont été remis en cohérence avec la V2 :
 
-Le second problème a été lié au mode d’écriture du fichier SQL sous PowerShell, qui a cassé les retours à la ligne et neutralisé le script via les commentaires SQL.
+- `app/page.tsx`
+- `app/general-projects/page.tsx`
+- `app/new-tasks/[projectId]/page.tsx`
+- `app/project/[projectId]/page.tsx`
+- `app/task-details/[taskId]/page.tsx`
+- `app/teams/[teamId]/page.tsx`
+- `app/meetings/[meetingId]/page.tsx`
+- `app/components/ProjectComponent.tsx`
+- `app/components/TeamComponent.tsx`
 
-## 15.3 Importance des vérifications intermédiaires
-
-Le travail a montré la nécessité de vérifier systématiquement :
-
-- le contenu du fichier SQL ;
-- la présence effective des sauts de ligne ;
-- l’absence d’opérations destructrices ;
-- l’alignement final entre base et schéma Prisma.
-
----
-
-# 16. Résultat global obtenu dans ce chat
-
-Au terme du travail effectué dans ce chat, le projet dispose désormais de :
-
-- la cible V2 mieux clarifiée sur le périmètre Prisma ;
-- un schéma `schema.prisma` étendu et cohérent ;
-- un `schema.v1.prisma` de référence utile pour la suite des diff ;
-- un script SQL de migration non destructive V1 → V2 ;
-- une base réellement migrée sans reset ;
-- une validation finale confirmant l’absence de différence entre base et schéma.
-
-Le **Lot 1 — Migration Prisma non destructive** peut être considéré comme **réalisé**.
-
----
-
-# 17. Recommandations pour la suite
-
-## 17.1 Prochaine étape logique
-
-La suite logique est le **Lot 2 — migration de données / backfill**.
-
-Objectifs typiques du Lot 2 :
-
-- initialiser `Project.status = ACTIVE` pour les projets existants ;
-- initialiser `Task.priority = MEDIUM` pour les tâches existantes ;
-- rattacher progressivement les `Team` aux `Project` via `Team.projectId` ;
-- préparer les premières données nécessaires aux permissions VIEWER ;
-- poser les bases du futur usage des `Milestone`, `TaskComment`, `Notification`, `MeetingParticipant`.
-
-## 17.2 Utilité de ce document
-
-Ce document peut servir de base pour :
-
-- documenter la migration V1 → V2 au fil des chats ;
-- justifier les choix techniques du Lot 1 ;
-- transmettre le contexte à d’autres intervenants ;
-- préparer les lots suivants avec une compréhension claire de ce qui a déjà été fait.
+### Ajustements majeurs
+- ajout de `VIEWER` dans les maps et sections UI projet ;
+- suppression de tout usage résiduel de `project.team` ;
+- remplacement des statuts V1 dans les filtres, selects et compteurs ;
+- adaptation des pages équipe/réunion au nouveau `TeamRole` ;
+- remplacement de `team.projects` par `team.project` ;
+- compatibilité avec les statuts `IN_REVIEW` et `CANCELLED`.
 
 ---
 
-# 18. Fichiers concernés dans ce chat
+# 9. Validation finale
 
-Les principaux fichiers manipulés ou générés dans ce travail ont été :
+## 9.1 Validation technique
+
+La commande suivante a été exécutée avec succès :
+
+```bash
+npx tsc --noEmit
+```
+
+Résultat :
+- **aucune erreur TypeScript**.
+
+## 9.2 Validation fonctionnelle
+
+Des vérifications manuelles ont été réalisées sur les flux jugés critiques.
+
+Résultat :
+- les fonctionnalités qui devaient continuer à fonctionner fonctionnent correctement dans l’état actuel du projet.
+
+---
+
+# 10. État obtenu
+
+À ce stade, les éléments suivants sont considérés comme validés :
+
+- schéma Prisma V2 final ;
+- baseline Prisma locale propre ;
+- migration de données minimale V1 → V2 ;
+- resserrage du schéma final ;
+- réalignement du runtime ;
+- réalignement du front ;
+- suppression des références legacy majeures ;
+- compilation TypeScript globale sans erreur ;
+- validation fonctionnelle manuelle des flux attendus.
+
+La migration technique V1 → V2 peut donc être considérée comme **stabilisée** sur le périmètre traité.
+
+---
+
+# 11. Éléments volontairement reportés
+
+La stabilisation technique ne signifie pas que toutes les capacités métier V2 sont déjà totalement exploitées.
+
+Restent encore à approfondir ou compléter selon le planning produit :
+
+- activation complète des permissions granulaires `VIEWER` dans tous les cas d’usage ;
+- enrichissement métier complet des jalons, commentaires et notifications ;
+- dashboard owner et métriques consolidées ;
+- finalisation des comportements métier spécifiques autour des équipes hiérarchiques ;
+- nettoyage métier fin de certains comportements hérités si nécessaire.
+
+---
+
+# 12. Recommandations pour la suite
+
+## 12.1 Suite immédiate recommandée
+
+La prochaine étape logique n’est plus une réparation de migration, mais une **consolidation fonctionnelle V2** :
+
+- vérifier les permissions `VIEWER` en profondeur ;
+- tester les workflows métiers V2 bout en bout ;
+- prioriser les capacités encore seulement préparées au niveau structurel.
+
+## 12.2 Intérêt de ce document
+
+Ce document peut servir à :
+
+- garder une trace technique claire de la migration ;
+- justifier les choix de schéma et de stratégie ;
+- faciliter la reprise du projet ;
+- préparer la phase de validation métier V2.
+
+---
+
+# 13. Fichiers principaux concernés
+
+Les principaux fichiers touchés dans ce chantier sont notamment :
 
 - `prisma/schema.prisma`
-- `prisma/schema.v1.prisma`
-- `prisma/lot1_v2_non_destructive.sql`
-- `prisma/migrations/0000_baseline/migration.sql` (tentative technique intermédiaire)
+- `prisma/migrations/...`
+- `scripts/migration-v2/01-normalize-statuses-and-roles.ts`
+- `scripts/migration-v2/02-fill-default-fields.ts`
+- `scripts/migration-v2/03-attach-teams-to-projects.ts`
+- `scripts/migration-v2/04-post-migration-checks.ts`
+- `type.ts`
+- `lib/project-roles.ts`
+- `lib/team-roles.ts`
+- `lib/task-status.ts`
+- `lib/prisma.ts`
+- `lib/permissions.ts`
+- `lib/validations.ts`
+- `app/actions/projects.ts`
+- `app/actions/tasks.ts`
+- `app/actions/teams.ts`
+- `app/actions/meetings.ts`
+- `app/actions/members.ts`
+- `app/actions/index.ts`
+- principales pages et composants projet / tâche / équipe / réunion.
 
 ---
 
-# 19. Résumé exécutif court
+# 14. Résumé exécutif
 
-Dans ce chat, le travail a consisté à préparer et appliquer le **Lot 1 de la migration V1 → V2** pour Sunu Projets.
+La migration Sunu Projets V1 → V2 a été menée en plusieurs étapes complémentaires :
 
-Après avoir clarifié la cible V2 à partir des documents de référence et recalé le schéma réel du projet, un patch Prisma non destructif a été conçu. Ce patch ajoutait les nouvelles structures nécessaires à la V2 sans supprimer les structures legacy V1.
+- extension du schéma vers la cible V2 ;
+- migration minimale des données existantes ;
+- resserrage du modèle final ;
+- reconstruction propre de l’historique Prisma local ;
+- réalignement du runtime et du front ;
+- validation finale TypeScript et fonctionnelle.
 
-L’utilisation directe de `prisma migrate dev` a échoué à cause de l’absence d’historique de migrations sur une base déjà existante. Une stratégie alternative a donc été mise en place : figer le schéma V1, générer un diff SQL V1 → V2, corriger un problème d’écriture du fichier SQL sous PowerShell, puis exécuter ce script directement contre la base.
-
-La validation finale a confirmé que la base est désormais alignée avec le `schema.prisma` patché, ce qui permet de considérer le **Lot 1 comme terminé**.
+Le résultat obtenu est un socle V2 techniquement cohérent, compilable et fonctionnel sur le périmètre traité, prêt pour la poursuite de la finalisation métier de la version 2.

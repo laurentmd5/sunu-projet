@@ -1,15 +1,14 @@
 "use client";
 
 import {
-    attachProjectToTeam,
     deleteTaskById,
     getProjectActivityLogs,
     getProjectInfo,
     getProjectMembersWithRoles,
-    getTeamsForCurrentUser,
     removeProjectMember,
     updateProjectMemberRole,
 } from "@/app/actions";
+
 import EmptyState from "@/app/components/EmptyState";
 import ProjectComponent from "@/app/components/ProjectComponent";
 import TaskComponent from "@/app/components/TaskComponent";
@@ -17,7 +16,7 @@ import UserInfo from "@/app/components/UserInfo";
 import Wrapper from "@/app/components/Wrapper";
 import { PROJECT_ROLE_LABELS } from "@/lib/project-role-labels";
 import { TASK_STATUSES } from "@/lib/task-status";
-import { Project, ProjectRole, ProjectUserMember, Team, TeamRole } from "@/type";
+import { Project, ProjectRole, ProjectUserMember } from "@/type";
 import { useAuthUser } from "@/lib/auth-client";
 import {
     ArrowRight,
@@ -25,7 +24,6 @@ import {
     CircleCheckBig,
     CopyPlus,
     Crown,
-    Link2,
     ListTodo,
     Loader,
     ShieldCheck,
@@ -40,7 +38,8 @@ import { toast } from "react-toastify";
 const ROLE_ORDER: Record<ProjectRole, number> = {
     OWNER: 0,
     MANAGER: 1,
-    MEMBER: 2,
+    VIEWER: 2,
+    MEMBER: 3,
 };
 
 const ROLE_SECTION_META: Record<
@@ -57,6 +56,11 @@ const ROLE_SECTION_META: Record<
         icon: <ShieldCheck className="w-4 h-4" />,
         empty: "Aucun manager",
     },
+    VIEWER: {
+        title: "Observateurs",
+        icon: <UserCheck className="w-4 h-4" />,
+        empty: "Aucun observateur",
+    },
     MEMBER: {
         title: "Membres",
         icon: <Users className="w-4 h-4" />,
@@ -67,8 +71,8 @@ const ROLE_SECTION_META: Record<
 type PendingRoleChange = {
     memberUserId: string;
     memberName: string;
-    currentRole: "MANAGER" | "MEMBER";
-    newRole: "MANAGER" | "MEMBER";
+    currentRole: "MANAGER" | "VIEWER" | "MEMBER";
+    newRole: "MANAGER" | "VIEWER" | "MEMBER";
 };
 
 type PendingRemoval = {
@@ -86,12 +90,6 @@ type ActivityLogItem = {
         name: string | null;
         email: string;
     };
-};
-
-type TeamOption = Team & {
-    currentUserRole?: TeamRole;
-    membersCount?: number;
-    projectsCount?: number;
 };
 
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
@@ -112,11 +110,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
     const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
     const [activityLoading, setActivityLoading] = useState(false);
-
-    const [availableTeams, setAvailableTeams] = useState<TeamOption[]>([]);
-    const [teamsLoading, setTeamsLoading] = useState(false);
-    const [selectedTeamId, setSelectedTeamId] = useState("");
-    const [isAttachingTeam, setIsAttachingTeam] = useState(false);
 
     const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
     const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
@@ -165,23 +158,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         }
     };
 
-    const fetchTeams = async () => {
-        try {
-            setTeamsLoading(true);
-            const teams = await getTeamsForCurrentUser();
-            setAvailableTeams(teams as TeamOption[]);
-        } catch (error) {
-            console.error("Erreur lors du chargement des équipes :", error);
-            toast.error(
-                error instanceof Error
-                    ? error.message
-                    : "Erreur lors du chargement des équipes"
-            );
-        } finally {
-            setTeamsLoading(false);
-        }
-    };
-
     useEffect(() => {
         const getId = async () => {
             const resolvedParams = await params;
@@ -189,7 +165,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             fetchInfos(resolvedParams.projectId);
             fetchMembers(resolvedParams.projectId);
             fetchActivityLogs(resolvedParams.projectId);
-            fetchTeams();
         };
         getId();
     }, [params]);
@@ -226,12 +201,9 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const canDeleteTask =
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
 
-    const canAttachTeam =
-        currentUserRole === "OWNER" || currentUserRole === "MANAGER";
-
-    const selectableTeams = availableTeams.filter(
-        (team) => team.id !== project?.team?.id
-    );
+    const projectTeamIds = useMemo(() => {
+        return new Set((project?.teams ?? []).map((team) => team.id));
+    }, [project]);
 
     const groupedMembers = useMemo(() => {
         const sorted = [...members].sort((a, b) => {
@@ -246,6 +218,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         return {
             OWNER: sorted.filter((member) => member.role === "OWNER"),
             MANAGER: sorted.filter((member) => member.role === "MANAGER"),
+            VIEWER: sorted.filter((member) => member.role === "VIEWER"),
             MEMBER: sorted.filter((member) => member.role === "MEMBER"),
         };
     }, [members]);
@@ -279,14 +252,14 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
     const requestRoleChange = (
         member: ProjectUserMember,
-        newRole: "MANAGER" | "MEMBER"
+        newRole: "MANAGER" | "VIEWER" | "MEMBER"
     ) => {
         if (member.role === newRole) return;
 
         setPendingRoleChange({
             memberUserId: member.userId,
             memberName: member.user.name || member.user.email,
-            currentRole: member.role as "MANAGER" | "MEMBER",
+            currentRole: member.role as "MANAGER" | "VIEWER" | "MEMBER",
             newRole,
         });
 
@@ -354,40 +327,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         setPendingRemoval(null);
     };
 
-    const openAttachTeamModal = () => {
-        setSelectedTeamId("");
-        const modal = document.getElementById("attach_team_modal") as HTMLDialogElement | null;
-        modal?.showModal();
-    };
-
-    const closeAttachTeamModal = () => {
-        const modal = document.getElementById("attach_team_modal") as HTMLDialogElement | null;
-        modal?.close();
-        setSelectedTeamId("");
-    };
-
-    const handleAttachTeam = async () => {
-        if (!projectId) return;
-
-        if (!selectedTeamId) {
-            toast.error("Veuillez sélectionner une équipe.");
-            return;
-        }
-
-        try {
-            setIsAttachingTeam(true);
-            await attachProjectToTeam(projectId, selectedTeamId);
-            await fetchInfos(projectId);
-            await fetchTeams();
-            toast.success("Projet rattaché à l'équipe avec succès.");
-            closeAttachTeamModal();
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
-        } finally {
-            setIsAttachingTeam(false);
-        }
-    };
-
     const renderMemberCard = (member: ProjectUserMember) => {
         const isOwner = member.role === "OWNER";
         const isCurrentUser = member.user.email === email;
@@ -425,11 +364,12 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             onChange={(e) =>
                                 requestRoleChange(
                                     member,
-                                    e.target.value as "MANAGER" | "MEMBER"
+                                    e.target.value as "MANAGER" | "VIEWER" | "MEMBER"
                                 )
                             }
                         >
                             <option value="MEMBER">Membre</option>
+                            <option value="VIEWER">Observateur</option>
                             <option value="MANAGER">Manager</option>
                         </select>
 
@@ -485,7 +425,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             <p className="text-sm opacity-70">Chargement des membres...</p>
                         ) : members.length > 0 ? (
                             <div className="space-y-5">
-                                {(["OWNER", "MANAGER", "MEMBER"] as ProjectRole[]).map((roleKey) => {
+                                {(["OWNER", "MANAGER", "VIEWER", "MEMBER"] as ProjectRole[]).map((roleKey) => {
                                     const sectionMembers = groupedMembers[roleKey];
                                     const meta = ROLE_SECTION_META[roleKey];
 
@@ -527,10 +467,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             <h2 className="font-semibold text-lg leading-tight">Équipe liée</h2>
                         </div>
 
-                        {project?.team ? (
+                        {project?.teams && project.teams.length > 0 ? (
                             <div className="space-y-3">
                                 <div className="rounded-lg border border-base-300 p-3">
-                                    <p className="font-medium break-words">{project.team.name}</p>
+                                    <p className="font-medium break-words">{project.teams[0]?.name}</p>
                                     <p className="text-sm opacity-70 mt-1">
                                         Ce projet est rattaché à une équipe.
                                     </p>
@@ -538,23 +478,12 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
                                 <div className="flex flex-col gap-2">
                                     <Link
-                                        href={`/teams/${project.team.id}`}
+                                        href={`/teams/${project.teams[0]?.id}`}
                                         className="btn btn-sm btn-outline w-full"
                                     >
                                         Voir l'équipe
                                         <ArrowRight className="w-4 h-4" />
                                     </Link>
-
-                                    {canAttachTeam && selectableTeams.length > 0 && (
-                                        <button
-                                            type="button"
-                                            className="btn btn-sm btn-ghost w-full"
-                                            onClick={openAttachTeamModal}
-                                        >
-                                            Changer d'équipe
-                                            <Link2 className="w-4 h-4" />
-                                        </button>
-                                    )}
                                 </div>
                             </div>
                         ) : (
@@ -564,24 +493,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                         Ce projet n'est rattaché à aucune équipe pour le moment.
                                     </p>
                                 </div>
-
-                                {canAttachTeam && (
-                                    <button
-                                        type="button"
-                                        className="btn btn-sm btn-primary w-full"
-                                        onClick={openAttachTeamModal}
-                                        disabled={teamsLoading || availableTeams.length === 0}
-                                    >
-                                        Rattacher à une équipe
-                                        <Link2 className="w-4 h-4" />
-                                    </button>
-                                )}
-
-                                {canAttachTeam && !teamsLoading && availableTeams.length === 0 && (
-                                    <p className="text-xs opacity-60">
-                                        Aucune équipe disponible pour le rattachement.
-                                    </p>
-                                )}
                             </div>
                         )}
                     </div>
@@ -816,69 +727,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         >
                             Retirer du projet
                         </button>
-                    </div>
-                </div>
-            </dialog>
-
-            <dialog id="attach_team_modal" className="modal">
-                <div className="modal-box">
-                    <form method="dialog">
-                        <button
-                            className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-                            onClick={closeAttachTeamModal}
-                        >
-                            ✕
-                        </button>
-                    </form>
-
-                    <h3 className="font-bold text-lg">Rattacher le projet à une équipe</h3>
-
-                    <p className="py-3 text-sm opacity-80">
-                        Sélectionnez l'équipe à laquelle ce projet doit être rattaché.
-                    </p>
-
-                    <div className="space-y-4">
-                        <select
-                            className="select select-bordered w-full"
-                            value={selectedTeamId}
-                            onChange={(e) => setSelectedTeamId(e.target.value)}
-                            disabled={teamsLoading || selectableTeams.length === 0}
-                        >
-                            <option value="">Choisir une équipe</option>
-                            {selectableTeams.map((team) => (
-                                <option key={team.id} value={team.id}>
-                                    {team.name}
-                                </option>
-                            ))}
-                        </select>
-
-                        {teamsLoading ? (
-                            <p className="text-sm opacity-70">Chargement des équipes...</p>
-                        ) : selectableTeams.length === 0 ? (
-                            <p className="text-sm opacity-70">
-                                Aucune autre équipe disponible.
-                            </p>
-                        ) : null}
-
-                        <div className="modal-action">
-                            <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={closeAttachTeamModal}
-                                disabled={isAttachingTeam}
-                            >
-                                Annuler
-                            </button>
-
-                            <button
-                                type="button"
-                                className="btn btn-primary"
-                                onClick={handleAttachTeam}
-                                disabled={!selectedTeamId || isAttachingTeam}
-                            >
-                                Confirmer
-                            </button>
-                        </div>
                     </div>
                 </div>
             </dialog>

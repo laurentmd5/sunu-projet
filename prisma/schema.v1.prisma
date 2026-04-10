@@ -11,7 +11,6 @@ datasource db {
 enum ProjectRole {
   OWNER
   MANAGER
-  VIEWER
   MEMBER
 }
 
@@ -50,16 +49,6 @@ enum ActivityType {
   TEAM_MEMBER_ROLE_UPDATED
   TEAM_MEMBER_REMOVED
   PROJECT_LINKED_TO_TEAM
-
-  VIEWER_INVITED
-  VIEWER_PERMISSIONS_UPDATED
-  MANAGER_ASSIGNED
-  SUBTEAM_CREATED
-  TASK_PRIORITY_CHANGED
-  MILESTONE_CREATED
-  MILESTONE_COMPLETED
-  MILESTONE_DELAYED
-  TASK_COMMENT_ADDED
 }
 
 model User {
@@ -78,10 +67,6 @@ model User {
   createdMeetings        TeamMeeting[]      @relation("CreatedMeetings")
   addedMeetingRecordings MeetingRecording[] @relation("RecordingAddedBy")
 
-  taskComments          TaskComment[]        @relation("TaskCommentAuthor")
-  meetingParticipations MeetingParticipant[]
-  notifications         Notification[]
-
   credential AuthCredential?
   sessions   Session[]
 }
@@ -97,26 +82,10 @@ model Team {
   createdById String @db.VarChar(36)
   createdBy   User   @relation("CreatedTeams", fields: [createdById], references: [id])
 
-  // V2 additions - nullable for safe migration
-  projectId String? @db.VarChar(36)
-  parentId  String? @db.VarChar(36)
-
-  // Legacy V1 relation: Project.teamId -> Team.id
-  projects Project[] @relation("LegacyProjectTeam")
-
-  // V2 relation: Team.projectId -> Project.id
-  project Project? @relation("ProjectTeams", fields: [projectId], references: [id], onDelete: Cascade)
-
-  parent   Team?  @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children Team[] @relation("TeamHierarchy")
-
   members    TeamMember[]
+  projects   Project[]
   meetings   TeamMeeting[]
   recordings MeetingRecording[]
-  tasks      Task[]
-
-  @@index([projectId])
-  @@index([parentId])
 }
 
 model TeamMember {
@@ -139,30 +108,19 @@ model Project {
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  tasks       Task[]
   inviteCode  String   @unique @db.VarChar(50)
-
-  // V2 additions
-  status    ProjectStatus?
-  startDate DateTime?
-  endDate   DateTime?
 
   createdById String @db.VarChar(36)
   createdBy   User   @relation("UserProjects", fields: [createdById], references: [id])
 
-  // Legacy V1 relation kept during migration
   teamId String? @db.VarChar(36)
-  team   Team?   @relation("LegacyProjectTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
-  // New V2 relation
-  teams Team[] @relation("ProjectTeams")
+  meetings TeamMeeting[]
 
-  tasks        Task[]
-  meetings     TeamMeeting[]
   users        ProjectUser[]
   activityLogs ActivityLog[]
-  milestones   Milestone[]
-
-  @@index([status])
 }
 
 model Task {
@@ -171,48 +129,26 @@ model Task {
   description         String
   status              String    @default("To Do")
   dueDate             DateTime?
+  projectId           String    @db.VarChar(36)
+  project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                User?     @relation(fields: [userId], references: [id])
+  userId              String?   @db.VarChar(36)
+  createdById         String    @db.VarChar(36)
+  createdBy           User      @relation("CreatedTasks", fields: [createdById], references: [id])
   solutionDescription String?
-
-  // V2 additions
-  priority    TaskPriority?
-  tags        Json?
-  milestoneId String?       @db.VarChar(36)
-  teamId      String?       @db.VarChar(36)
-
-  projectId   String  @db.VarChar(36)
-  userId      String? @db.VarChar(36)
-  createdById String  @db.VarChar(36)
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user      User?   @relation(fields: [userId], references: [id])
-  createdBy User    @relation("CreatedTasks", fields: [createdById], references: [id])
-
-  milestone Milestone?    @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
-  team      Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  comments  TaskComment[]
-
-  @@index([projectId])
-  @@index([userId])
-  @@index([milestoneId])
-  @@index([teamId])
-  @@index([priority])
 }
 
 model ProjectUser {
-  id          String                   @id @default(uuid()) @db.VarChar(36)
-  userId      String                   @db.VarChar(36)
-  projectId   String                   @db.VarChar(36)
-  role        ProjectRole              @default(MEMBER)
-  scope       ProjectCollaboratorScope @default(INTERNAL)
-  inviteToken String?                  @unique @db.VarChar(100)
+  id        String                   @id @default(uuid()) @db.VarChar(36)
+  userId    String                   @db.VarChar(36)
+  projectId String                   @db.VarChar(36)
+  role      ProjectRole              @default(MEMBER)
+  scope     ProjectCollaboratorScope @default(INTERNAL)
 
   user    User    @relation(fields: [userId], references: [id])
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  viewerPermissionGrants ViewerPermissionGrant[]
-
   @@unique([userId, projectId])
-  @@index([projectId, role])
 }
 
 model ActivityLog {
@@ -221,14 +157,12 @@ model ActivityLog {
   actorUserId String       @db.VarChar(36)
   type        ActivityType
   message     String
-  metadata    Json?
   createdAt   DateTime     @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   actor   User    @relation("ActivityActor", fields: [actorUserId], references: [id])
 
   @@index([projectId, createdAt])
-  @@index([actorUserId])
 }
 
 model TeamMeeting {
@@ -250,10 +184,9 @@ model TeamMeeting {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdBy User     @relation("CreatedMeetings", fields: [createdById], references: [id])
 
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   meetingRecordings MeetingRecording[]
-  participants      MeetingParticipant[]
 
   @@index([teamId, scheduledAt])
   @@index([projectId, scheduledAt])
@@ -301,109 +234,4 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
-}
-
-enum ProjectStatus {
-  ACTIVE
-  COMPLETED
-  ARCHIVED
-  ON_HOLD
-}
-
-enum TaskPriority {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum MilestoneStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  DELAYED
-}
-
-enum ViewerPermission {
-  VIEW_PROJECT_PROGRESS
-  VIEW_MEMBER_STATS
-  ASSIGN_TASKS
-  CREATE_TASK
-  VIEW_MEETINGS
-  JOIN_MEETINGS
-}
-
-model Milestone {
-  id          String          @id @default(uuid()) @db.VarChar(36)
-  projectId   String          @db.VarChar(36)
-  name        String
-  description String?
-  targetDate  DateTime?
-  status      MilestoneStatus @default(PENDING)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks   Task[]
-
-  @@index([projectId, status])
-  @@index([targetDate])
-}
-
-model TaskComment {
-  id        String   @id @default(uuid()) @db.VarChar(36)
-  taskId    String   @db.VarChar(36)
-  authorId  String   @db.VarChar(36)
-  body      String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author User @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-
-  @@index([taskId, createdAt])
-  @@index([authorId])
-}
-
-model ViewerPermissionGrant {
-  id            String           @id @default(uuid()) @db.VarChar(36)
-  projectUserId String           @db.VarChar(36)
-  permission    ViewerPermission
-  createdAt     DateTime         @default(now())
-
-  projectUser ProjectUser @relation(fields: [projectUserId], references: [id], onDelete: Cascade)
-
-  @@unique([projectUserId, permission])
-  @@index([projectUserId])
-}
-
-model MeetingParticipant {
-  id        String    @id @default(uuid()) @db.VarChar(36)
-  meetingId String    @db.VarChar(36)
-  userId    String    @db.VarChar(36)
-  joinedAt  DateTime?
-  createdAt DateTime  @default(now())
-
-  meeting TeamMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([meetingId, userId])
-  @@index([userId])
-}
-
-model Notification {
-  id        String    @id @default(uuid()) @db.VarChar(36)
-  userId    String    @db.VarChar(36)
-  type      String    @db.VarChar(100)
-  title     String
-  message   String?
-  link      String?   @db.VarChar(255)
-  metadata  Json?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([userId, readAt])
 }

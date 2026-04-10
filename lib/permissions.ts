@@ -69,7 +69,6 @@ export async function assertProjectMember(projectId: string) {
         select: {
             id: true,
             createdById: true,
-            teamId: true,
         },
     });
 

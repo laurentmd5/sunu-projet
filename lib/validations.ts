@@ -63,7 +63,7 @@ export const updateTaskStatusSchema = z.object({
         .min(1, "Tâche invalide."),
     newStatus: z
         .enum(TASK_STATUS_VALUES)
-        .default("To Do")
+        .default("TODO")
         .refine((val) => TASK_STATUS_VALUES.includes(val), {
             message: "Statut de tâche invalide.",
         }),

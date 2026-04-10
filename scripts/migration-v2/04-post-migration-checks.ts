@@ -44,17 +44,23 @@ async function main() {
     taskPriorityRows,
     teamMemberRoleRows,
   ] = await Promise.all([
-    prisma.project.count({
-      where: { status: null },
-    }),
+    prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM Project
+      WHERE status IS NULL
+    `.then((rows) => Number(rows[0]?.count ?? 0)),
 
-    prisma.task.count({
-      where: { priority: null },
-    }),
+    prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM Task
+      WHERE priority IS NULL
+    `.then((rows) => Number(rows[0]?.count ?? 0)),
 
-    prisma.team.count({
-      where: { projectId: null },
-    }),
+    prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM Team
+      WHERE projectId IS NULL
+    `.then((rows) => Number(rows[0]?.count ?? 0)),
 
     prisma.team.count({
       where: { parentId: { not: null } },

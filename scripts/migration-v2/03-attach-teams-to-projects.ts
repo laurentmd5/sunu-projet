@@ -166,20 +166,14 @@ async function main() {
   console.log("Backfill terminé.");
   console.log(JSON.stringify(summary, null, 2));
 
-  const teamsWithoutProject = await prisma.team.findMany({
-    where: {
-      projectId: null,
-    },
-    select: {
-      id: true,
-      name: true,
-      projectId: true,
-      parentId: true,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
+  const teamsWithoutProject = await prisma.$queryRaw<
+    Array<{ id: string; name: string; projectId: string | null; parentId: string | null }>
+  >`
+    SELECT id, name, projectId, parentId
+    FROM Team
+    WHERE projectId IS NULL
+    ORDER BY createdAt ASC
+  `;
 
   console.log("Équipes encore sans projet:");
   console.log(JSON.stringify(teamsWithoutProject, null, 2));

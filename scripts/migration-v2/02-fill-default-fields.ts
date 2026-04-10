@@ -27,26 +27,32 @@ async function main() {
 
   await prisma.$transaction(async (tx) => {
     // 1) Task.priority -> MEDIUM si NULL
-    const taskPriorityResult = await tx.task.updateMany({
-      where: {
-        priority: null,
-      },
-      data: {
-        priority: "MEDIUM" as any,
-      },
-    });
-    summary.tasksPriorityFilled = taskPriorityResult.count;
+    const tasksWithoutPriority = await tx.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM Task
+      WHERE priority IS NULL
+    `;
+    summary.tasksPriorityFilled = Number(tasksWithoutPriority[0]?.count ?? 0);
+
+    await tx.$executeRawUnsafe(`
+      UPDATE Task
+      SET priority = 'MEDIUM'
+      WHERE priority IS NULL
+    `);
 
     // 2) Project.status -> ACTIVE si NULL
-    const projectStatusResult = await tx.project.updateMany({
-      where: {
-        status: null,
-      },
-      data: {
-        status: "ACTIVE" as any,
-      },
-    });
-    summary.projectsStatusFilled = projectStatusResult.count;
+    const projectsWithoutStatus = await tx.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM Project
+      WHERE status IS NULL
+    `;
+    summary.projectsStatusFilled = Number(projectsWithoutStatus[0]?.count ?? 0);
+
+    await tx.$executeRawUnsafe(`
+      UPDATE Project
+      SET status = 'ACTIVE'
+      WHERE status IS NULL
+    `);
 
     // 3) Team.parentId -> NULL pour repartir sur une hiérarchie propre
     const teamsWithParentBefore = await tx.team.count({
@@ -152,14 +158,30 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 
   // Vérifications finales simples
-  const [tasksWithoutPriority, projectsWithoutStatus, teamsWithParent, tasksWithMilestone, tasksWithTeam] =
-    await Promise.all([
-      prisma.task.count({ where: { priority: null } }),
-      prisma.project.count({ where: { status: null } }),
-      prisma.team.count({ where: { parentId: { not: null } } }),
-      prisma.task.count({ where: { milestoneId: { not: null } } }),
-      prisma.task.count({ where: { teamId: { not: null } } }),
-    ]);
+  const [
+    tasksWithoutPriorityRaw,
+    projectsWithoutStatusRaw,
+    teamsWithParent,
+    tasksWithMilestone,
+    tasksWithTeam,
+  ] = await Promise.all([
+    prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM Task
+      WHERE priority IS NULL
+    `,
+    prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM Project
+      WHERE status IS NULL
+    `,
+    prisma.team.count({ where: { parentId: { not: null } } }),
+    prisma.task.count({ where: { milestoneId: { not: null } } }),
+    prisma.task.count({ where: { teamId: { not: null } } }),
+  ]);
+
+  const tasksWithoutPriority = Number(tasksWithoutPriorityRaw[0]?.count ?? 0);
+  const projectsWithoutStatus = Number(projectsWithoutStatusRaw[0]?.count ?? 0);
 
   const remainingInviteTokens = await prisma.projectUser.count({
     where: {

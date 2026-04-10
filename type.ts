@@ -74,7 +74,17 @@ export type Project = PrismaProject & {
     tasks?: Task[];
     users?: User[];
     createdBy?: User;
-    teams?: Team[];
+    teams?: Array<{
+        id: string;
+        name: string;
+        description?: string | null;
+        inviteCode?: string;
+        createdAt?: Date;
+        updatedAt?: Date;
+        createdById?: string;
+        projectId?: string;
+        parentId?: string | null;
+    }>;
     meetings?: TeamMeeting[];
 };
 

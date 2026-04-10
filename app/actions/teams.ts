@@ -20,6 +20,8 @@ const createTeamSchema = z.object({
         .max(1000, "La description est trop longue.")
         .optional()
         .or(z.literal("")),
+    projectId: z.string().trim().min(1, "Projet invalide."),
+    parentId: z.string().trim().optional().nullable(),
 });
 
 const joinTeamSchema = z.object({
@@ -33,7 +35,7 @@ const joinTeamSchema = z.object({
 const updateTeamRoleSchema = z.object({
     teamId: z.string().trim().min(1, "Équipe invalide."),
     memberUserId: z.string().trim().min(1, "Utilisateur invalide."),
-    newRole: z.enum(["MANAGER", "MEMBER"]),
+    newRole: z.enum(["OWNER", "MEMBER"]),
 });
 
 const removeTeamMemberSchema = z.object({
@@ -41,17 +43,18 @@ const removeTeamMemberSchema = z.object({
     memberUserId: z.string().trim().min(1, "Utilisateur invalide."),
 });
 
-const attachProjectToTeamSchema = z.object({
-    projectId: z.string().trim().min(1, "Projet invalide."),
-    teamId: z.string().trim().min(1, "Équipe invalide."),
-});
 
 function generateUniqueCode(): string {
     return randomBytes(6).toString("hex");
 }
 
-export async function createTeam(name: string, description?: string) {
-    const parsed = createTeamSchema.parse({ name, description });
+export async function createTeam(
+    name: string,
+    description?: string,
+    projectId?: string,
+    parentId?: string | null
+) {
+    const parsed = createTeamSchema.parse({ name, description, projectId, parentId });
     const user = await getCurrentDbUser();
 
     const inviteCode = generateUniqueCode();
@@ -62,6 +65,8 @@ export async function createTeam(name: string, description?: string) {
             description: parsed.description || null,
             inviteCode,
             createdById: user.id,
+            projectId: parsed.projectId,
+            parentId: parsed.parentId ?? null,
             members: {
                 create: {
                     userId: user.id,
@@ -71,6 +76,12 @@ export async function createTeam(name: string, description?: string) {
         },
         include: {
             createdBy: true,
+            project: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
             members: {
                 include: {
                     user: {
@@ -82,7 +93,8 @@ export async function createTeam(name: string, description?: string) {
                     },
                 },
             },
-            projects: true,
+            parent: true,
+            children: true,
         },
     });
 
@@ -102,10 +114,19 @@ export async function getTeamsForCurrentUser() {
             team: {
                 include: {
                     createdBy: true,
+                    project: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                    parent: true,
+                    children: {
+                        select: { id: true },
+                    },
                     _count: {
                         select: {
                             members: true,
-                            projects: true,
                         },
                     },
                 },
@@ -119,23 +140,18 @@ export async function getTeamsForCurrentUser() {
     });
 
     return memberships.map(
-        (membership: {
-            role: "OWNER" | "MANAGER" | "MEMBER";
-            team: Team & {
-                createdBy?: any;
-                _count: { members: number; projects: number };
-            };
-        }) => ({
+        (membership: any) => ({
             ...membership.team,
             currentUserRole: membership.role,
             membersCount: membership.team._count.members,
-            projectsCount: membership.team._count.projects,
+            childrenCount: membership.team.children?.length || 0,
+            project: membership.team.project,
         })
     );
 }
 
 export async function getTeamDetails(teamId: string) {
-    await assertHasTeamRole(teamId, ["OWNER", "MANAGER", "MEMBER"]);
+    await assertHasTeamRole(teamId, ["OWNER", "MEMBER"]);
 
     const team = await prisma.team.findUnique({
         where: { id: teamId },
@@ -156,7 +172,7 @@ export async function getTeamDetails(teamId: string) {
                     { joinedAt: "asc" },
                 ],
             },
-            projects: {
+            project: {
                 include: {
                     tasks: {
                         include: {
@@ -176,9 +192,6 @@ export async function getTeamDetails(teamId: string) {
                         },
                     },
                     createdBy: true,
-                },
-                orderBy: {
-                    createdAt: "desc",
                 },
             },
             meetings: {
@@ -210,13 +223,13 @@ export async function getTeamDetails(teamId: string) {
 
     return {
         ...team,
-        projects: team.projects.map((project) => ({
-            ...project,
-            users: project.users.map(
+        project: team.project ? {
+            ...team.project,
+            users: team.project.users.map(
                 (entry: { user: { id: string; name: string; email: string } }) =>
                     entry.user
             ),
-        })),
+        } : null,
     };
 }
 
@@ -262,7 +275,7 @@ export async function joinTeamByInviteCode(inviteCode: string) {
 }
 
 export async function getTeamMembers(teamId: string) {
-    await assertHasTeamRole(teamId, ["OWNER", "MANAGER", "MEMBER"]);
+    await assertHasTeamRole(teamId, ["OWNER", "MEMBER"]);
 
     return prisma.teamMember.findMany({
         where: { teamId },
@@ -285,7 +298,7 @@ export async function getTeamMembers(teamId: string) {
 export async function updateTeamMemberRole(
     teamId: string,
     memberUserId: string,
-    newRole: "MANAGER" | "MEMBER"
+    newRole: "OWNER" | "MEMBER"
 ) {
     const parsed = updateTeamRoleSchema.parse({
         teamId,
@@ -388,68 +401,3 @@ export async function removeTeamMember(teamId: string, memberUserId: string) {
     return { success: true, message: "Membre retiré de l'équipe avec succès." };
 }
 
-export async function attachProjectToTeam(projectId: string, teamId: string) {
-    const parsed = attachProjectToTeamSchema.parse({ projectId, teamId });
-
-    const user = await getCurrentDbUser();
-    await assertHasTeamRole(parsed.teamId, ["OWNER", "MANAGER"]);
-
-    const projectMembership = await prisma.projectUser.findUnique({
-        where: {
-            userId_projectId: {
-                userId: user.id,
-                projectId: parsed.projectId,
-            },
-        },
-    });
-
-    if (!projectMembership || !["OWNER", "MANAGER"].includes(projectMembership.role)) {
-        throw new ActionError(
-            "Vous devez être OWNER ou MANAGER du projet pour le rattacher à une équipe.",
-            403
-        );
-    }
-
-    const updatedProject = await prisma.project.update({
-        where: {
-            id: parsed.projectId,
-        },
-        data: {
-            teamId: parsed.teamId,
-        },
-        include: {
-            createdBy: true,
-            team: true,
-            tasks: true,
-            users: {
-                select: {
-                    user: {
-                        select: {
-                            id: true,
-                            name: true,
-                            email: true,
-                        },
-                    },
-                },
-            },
-        },
-    });
-
-    revalidatePath("/teams");
-    revalidatePath(`/teams/${parsed.teamId}`);
-    revalidatePath(`/project/${parsed.projectId}`);
-    revalidatePath("/");
-    revalidatePath("/general-projects");
-
-    return {
-        success: true,
-        message: "Projet rattaché à l'équipe avec succès.",
-        project: {
-            ...updatedProject,
-            users: updatedProject.users.map(
-                (entry: { user: { id: string; name: string; email: string } }) =>
-                    entry.user
-            ),
-        },
-    };
-}

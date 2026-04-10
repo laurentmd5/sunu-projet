@@ -3,7 +3,6 @@ import { ActionError, getCurrentDbUser } from "@/lib/permissions";
 
 export const TEAM_ROLES = {
     OWNER: "OWNER",
-    MANAGER: "MANAGER",
     MEMBER: "MEMBER",
 } as const;
 
@@ -49,7 +48,7 @@ export async function assertHasTeamRole(
 }
 
 export async function canManageTeam(teamId: string) {
-    return assertHasTeamRole(teamId, ["OWNER", "MANAGER"]);
+    return assertHasTeamRole(teamId, ["OWNER"]);
 }
 
 export async function canAdminTeam(teamId: string) {

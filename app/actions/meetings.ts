@@ -116,7 +116,7 @@ async function getMeetingForVideoManagement(meetingId: string) {
         throw new ActionError("Réunion introuvable.", 404);
     }
 
-    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+    await assertHasTeamRole(meeting.teamId, ["OWNER"]);
 
     return meeting;
 }
@@ -134,7 +134,7 @@ async function getMeetingForRecordingManagement(meetingId: string) {
         throw new ActionError("Réunion introuvable.", 404);
     }
 
-    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+    await assertHasTeamRole(meeting.teamId, ["OWNER"]);
 
     return meeting;
 }
@@ -163,21 +163,21 @@ export async function createMeeting(input: {
     });
 
     const user = await getCurrentDbUser();
-    await assertHasTeamRole(parsed.teamId, ["OWNER", "MANAGER"]);
+    await assertHasTeamRole(parsed.teamId, ["OWNER"]);
 
     if (parsed.projectId) {
         const project = await prisma.project.findUnique({
             where: { id: parsed.projectId },
-            select: { id: true, teamId: true },
+            include: {
+                teams: {
+                    where: { id: parsed.teamId },
+                },
+            },
         });
 
-        if (!project) {
-            throw new ActionError("Projet introuvable.", 404);
-        }
-
-        if (project.teamId !== parsed.teamId) {
+        if (!project || project.teams.length === 0) {
             throw new ActionError(
-                "Le projet sélectionné n'appartient pas à cette équipe.",
+                "Le projet sélectionné n'est pas lié à cette équipe.",
                 400
             );
         }
@@ -261,11 +261,15 @@ export async function getMeetingsForCurrentUser() {
 }
 
 export async function getTeamProjectsForMeeting(teamId: string) {
-    await assertHasTeamRole(teamId, ["OWNER", "MANAGER", "MEMBER"]);
+    await assertHasTeamRole(teamId, ["OWNER", "MEMBER"]);
 
     const projects = await prisma.project.findMany({
         where: {
-            teamId,
+            teams: {
+                some: {
+                    id: teamId,
+                },
+            },
         },
         select: {
             id: true,
@@ -357,7 +361,7 @@ export async function updateMeetingNotes(meetingId: string, notes: string) {
         throw new ActionError("Réunion introuvable.", 404);
     }
 
-    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+    await assertHasTeamRole(meeting.teamId, ["OWNER"]);
 
     const updatedMeeting = await prisma.teamMeeting.update({
         where: { id: parsed.meetingId },
@@ -394,7 +398,7 @@ export async function updateMeetingStatus(
         throw new ActionError("Réunion introuvable.", 404);
     }
 
-    await assertHasTeamRole(meeting.teamId, ["OWNER", "MANAGER"]);
+    await assertHasTeamRole(meeting.teamId, ["OWNER"]);
 
     const updatedMeeting = await prisma.teamMeeting.update({
         where: { id: parsed.meetingId },
@@ -618,7 +622,7 @@ export async function removeMeetingRecording(recordingId: string) {
         throw new ActionError("Enregistrement introuvable.", 404);
     }
 
-    await assertHasTeamRole(recording.meeting.teamId, ["OWNER", "MANAGER"]);
+    await assertHasTeamRole(recording.meeting.teamId, ["OWNER"]);
 
     await prisma.meetingRecording.delete({
         where: { id: recordingId },

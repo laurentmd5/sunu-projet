@@ -50,7 +50,7 @@ export async function assertHasProjectRole(
 }
 
 export async function canManageProject(projectId: string) {
-    return assertHasProjectRole(projectId, [PROJECT_ROLES.OWNER, PROJECT_ROLES.MANAGER]);
+    return assertHasProjectRole(projectId, ["OWNER", "MANAGER"]);
 }
 
 export async function canAdminProject(projectId: string) {

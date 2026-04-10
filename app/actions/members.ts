@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 
 export async function getProjectUsers(idProject: string) {
     try {
-        await assertHasProjectRole(idProject, ["OWNER", "MANAGER", "MEMBER"]);
+        await assertHasProjectRole(idProject, ["OWNER", "MANAGER", "VIEWER", "MEMBER"]);
 
         const projectWithUsers = await prisma.project.findUnique({
             where: { id: idProject },
@@ -32,7 +32,7 @@ export async function getProjectUsers(idProject: string) {
 }
 
 export async function getProjectMembersWithRoles(projectId: string) {
-    await assertHasProjectRole(projectId, ["OWNER", "MANAGER", "MEMBER"]);
+    await assertHasProjectRole(projectId, ["OWNER", "MANAGER", "VIEWER", "MEMBER"]);
 
     const members = await prisma.projectUser.findMany({
         where: {
@@ -55,7 +55,7 @@ export async function getProjectMembersWithRoles(projectId: string) {
             id: string;
             projectId: string;
             userId: string;
-            role: "OWNER" | "MANAGER" | "MEMBER";
+            role: "OWNER" | "MANAGER" | "VIEWER" | "MEMBER";
             user: { id: string; name: string | null; email: string };
         }) => ({
             id: membership.id,
@@ -70,7 +70,7 @@ export async function getProjectMembersWithRoles(projectId: string) {
 export async function updateProjectMemberRole(
     projectId: string,
     memberUserId: string,
-    newRole: "MANAGER" | "MEMBER"
+    newRole: "MANAGER" | "VIEWER" | "MEMBER"
 ) {
     const currentUser = await getCurrentDbUser();
     await assertHasProjectRole(projectId, ["OWNER"]);
@@ -79,7 +79,7 @@ export async function updateProjectMemberRole(
         throw new ActionError("Collaborateur invalide.", 400);
     }
 
-    if (!["MANAGER", "MEMBER"].includes(newRole)) {
+    if (!["MANAGER", "VIEWER", "MEMBER"].includes(newRole)) {
         throw new ActionError("Rôle invalide.", 400);
     }
 

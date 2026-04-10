@@ -7,10 +7,16 @@ import {
     Team as PrismaTeam,
     TeamMeeting as PrismaTeamMeeting,
     User,
-} from "@/prisma/generated/client";
+} from "@prisma/client";
 
-export type ProjectRole = "OWNER" | "MANAGER" | "MEMBER";
-export type TeamRole = "OWNER" | "MANAGER" | "MEMBER";
+export type ProjectRole = "OWNER" | "MANAGER" | "VIEWER" | "MEMBER";
+export type TeamRole = "OWNER" | "MEMBER";
+export type TaskStatus =
+    | "TODO"
+    | "IN_PROGRESS"
+    | "IN_REVIEW"
+    | "DONE"
+    | "CANCELLED";
 export type ProjectCollaboratorScope = "INTERNAL" | "EXTERNAL";
 
 export type ProjectUserMember = {
@@ -42,7 +48,7 @@ export type TeamMember = {
 export type Team = PrismaTeam & {
     createdBy?: User;
     members?: TeamMember[];
-    projects?: Project[];
+    project?: Project;
     meetings?: TeamMeeting[];
 };
 
@@ -51,29 +57,24 @@ export type Project = PrismaProject & {
     collaboratorsCount?: number;
 
     taskStats?: {
-        toDo: number;
+        todo: number;
         inProgress: number;
         done: number;
+        inReview: number;
+        cancelled: number;
     };
 
     percentages?: {
         progressPercentage: number;
         inProgressPercentage: number;
-        toDoPercentage: number;
+        todoPercentage: number;
+        inReviewPercentage: number;
     };
 
     tasks?: Task[];
     users?: User[];
     createdBy?: User;
-    team?: {
-        id: string;
-        name: string;
-        description?: string | null;
-        createdAt?: Date;
-        updatedAt?: Date;
-        inviteCode?: string;
-        createdById?: string;
-    } | null;
+    teams?: Team[];
     meetings?: TeamMeeting[];
 };
 

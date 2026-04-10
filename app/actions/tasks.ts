@@ -16,11 +16,11 @@ const createTaskSchema = z.object({
 });
 
 const taskStatusSchema = z.enum([
-    "To Do",
-    "In Progress",
-    "In Review",
-    "Done",
-    "Cancelled",
+    "TODO",
+    "IN_PROGRESS",
+    "IN_REVIEW",
+    "DONE",
+    "CANCELLED",
 ]);
 
 const updateTaskStatusSchema = z.object({
@@ -180,7 +180,7 @@ export const getTaskDetails = async (taskId: string) => {
 
 export const updateTaskStatus = async (
     taskId: string,
-    newStatus: "To Do" | "In Progress" | "In Review" | "Done" | "Cancelled",
+    newStatus: "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "CANCELLED",
     solutionDescription?: string
 ) => {
     const parsed = updateTaskStatusSchema.parse({

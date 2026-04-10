@@ -6,7 +6,11 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate:v2:normalize": "tsx scripts/migration-v2/01-normalize-statuses-and-roles.ts",
+    "migrate:v2:fill-defaults": "tsx scripts/migration-v2/02-fill-default-fields.ts",
+    "migrate:v2:attach-teams": "tsx scripts/migration-v2/03-attach-teams-to-projects.ts",
+    "migrate:v2:checks": "tsx scripts/migration-v2/04-post-migration-checks.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -32,6 +36,7 @@
     "eslint-config-next": "16.1.7",
     "prisma": "^6.19.3",
     "tailwindcss": "^4.2.1",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

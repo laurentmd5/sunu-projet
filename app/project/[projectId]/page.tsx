@@ -148,6 +148,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             setActivityLogs(logs as ActivityLogItem[]);
         } catch (error) {
             console.error("Erreur lors du chargement de l'activité :", error);
+            if (error && typeof error === "object" && "status" in error && error.status === 403) {
+                setActivityLogs([]);
+                return;
+            }
             toast.error(
                 error instanceof Error
                     ? error.message

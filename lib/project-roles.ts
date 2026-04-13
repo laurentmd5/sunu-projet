@@ -1,5 +1,6 @@
-import prisma from "@/lib/prisma";
-import { ActionError, getCurrentDbUser } from "@/lib/permissions";
+import { ActionError, ProjectRole } from "@/lib/permissions-core";
+import { getProjectAccessContext } from "@/lib/project-access";
+import { assertProjectCapability } from "@/lib/project-capabilities";
 
 export const PROJECT_ROLES = {
     OWNER: "OWNER",
@@ -8,51 +9,28 @@ export const PROJECT_ROLES = {
     MEMBER: "MEMBER",
 } as const;
 
-export type ProjectRole = typeof PROJECT_ROLES[keyof typeof PROJECT_ROLES];
-
 export async function getProjectMembership(projectId: string) {
-    const user = await getCurrentDbUser();
-
-    const membership = await prisma.projectUser.findUnique({
-        where: {
-            userId_projectId: {
-                userId: user.id,
-                projectId,
-            },
-        },
-        include: {
-            project: true,
-            user: true,
-        },
-    });
-
-    if (!membership) {
-        throw new ActionError("Accès refusé à ce projet.", 403);
-    }
-
-    return membership;
+  const ctx = await getProjectAccessContext(projectId);
+  return ctx.membership;
 }
 
 export async function assertHasProjectRole(
-    projectId: string,
-    allowedRoles: ProjectRole[]
+  projectId: string,
+  allowedRoles: ProjectRole[]
 ) {
-    const membership = await getProjectMembership(projectId);
+  const ctx = await getProjectAccessContext(projectId);
 
-    if (!allowedRoles.includes(membership.role as ProjectRole)) {
-        throw new ActionError(
-            "Vous n'avez pas les droits suffisants pour cette action.",
-            403
-        );
-    }
+  if (!allowedRoles.includes(ctx.role)) {
+    throw new ActionError("Rôle insuffisant pour cette action.", 403);
+  }
 
-    return membership;
+  return ctx.membership;
 }
 
 export async function canManageProject(projectId: string) {
-    return assertHasProjectRole(projectId, ["OWNER", "MANAGER"]);
+  return assertProjectCapability(projectId, "MANAGE_PROJECT_SETTINGS");
 }
 
 export async function canAdminProject(projectId: string) {
-    return assertHasProjectRole(projectId, ["OWNER"]);
+  return assertProjectCapability(projectId, "DELETE_PROJECT");
 }

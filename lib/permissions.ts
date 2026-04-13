@@ -1,18 +1,38 @@
 // lib/permissions.ts
 import prisma from "@/lib/prisma";
 import { getCurrentAuthIdentity } from "@/lib/auth";
+import { assertProjectCapability } from "@/lib/project-capabilities";
+import { ActionError } from "@/lib/permissions-core";
 
-export class ActionError extends Error {
-    status: number;
+export { ActionError } from "@/lib/permissions-core";
+export { getCurrentDbUser, assertProjectAccess } from "@/lib/project-access";
+export {
+  assertCanReadProject,
+  assertCanCreateTask,
+  assertCanAssignTasks,
+  assertCanManageMembers,
+  assertCanManageViewers,
+  assertCanCreateTeam,
+  assertCanReadMeetings,
+  assertCanJoinMeetings,
+  assertCanCreateMeeting,
+} from "@/lib/permission-helpers";
 
-    constructor(message: string, status = 400) {
-        super(message);
-        this.name = "ActionError";
-        this.status = status;
-    }
+// Legacy wrappers temporaires pour compatibilité
+export async function assertProjectMember(projectId: string) {
+  return assertProjectCapability(projectId, "READ_PROJECT");
 }
 
-export async function getCurrentDbUser() {
+export async function canManageProject(projectId: string) {
+  return assertProjectCapability(projectId, "MANAGE_PROJECT_SETTINGS");
+}
+
+export async function canAdminProject(projectId: string) {
+  return assertProjectCapability(projectId, "DELETE_PROJECT");
+}
+
+// Fonctions legacy conservées temporairement
+export async function assertTeamMember(teamId: string) {
     const identity = await getCurrentAuthIdentity();
 
     if (!identity?.email) {
@@ -29,12 +49,6 @@ export async function getCurrentDbUser() {
     if (!user) {
         throw new ActionError("Utilisateur introuvable en base.", 401);
     }
-
-    return user;
-}
-
-export async function assertTeamMember(teamId: string) {
-    const user = await getCurrentDbUser();
 
     const membership = await prisma.teamMember.findUnique({
         where: {
@@ -55,42 +69,27 @@ export async function assertTeamMember(teamId: string) {
     return { user, team: membership.team, membership };
 }
 
-export async function assertProjectMember(projectId: string) {
-    const user = await getCurrentDbUser();
-
-    const project = await prisma.project.findFirst({
-        where: {
-            id: projectId,
-            OR: [
-                { createdById: user.id },
-                { users: { some: { userId: user.id } } },
-            ],
-        },
-        select: {
-            id: true,
-            createdById: true,
-        },
-    });
-
-    if (!project) {
-        throw new ActionError("Accès refusé à ce projet.", 403);
-    }
-
-    return { user, project };
-}
-
 export async function assertProjectOwner(projectId: string) {
-    const { user, project } = await assertProjectMember(projectId);
-
-    if (project.createdById !== user.id) {
-        throw new ActionError("Seul le créateur du projet peut effectuer cette action.", 403);
-    }
-
-    return { user, project };
+  return assertProjectCapability(projectId, "DELETE_PROJECT");
 }
 
 export async function assertTaskAccess(taskId: string) {
-    const user = await getCurrentDbUser();
+    const identity = await getCurrentAuthIdentity();
+
+    if (!identity?.email) {
+        throw new ActionError(
+            "Vous devez être connecté pour effectuer cette action.",
+            401
+        );
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { email: identity.email },
+    });
+
+    if (!user) {
+        throw new ActionError("Utilisateur introuvable en base.", 401);
+    }
 
     const task = await prisma.task.findFirst({
         where: {

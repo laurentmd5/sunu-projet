@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
-import { ActionError, getCurrentDbUser } from "@/lib/permissions";
+import { ActionError } from "@/lib/permissions-core";
+import { assertProjectCapability } from "@/lib/project-capabilities";
+import { getCurrentDbUser } from "@/lib/project-access";
 
 export const TEAM_ROLES = {
     OWNER: "OWNER",
@@ -8,14 +10,12 @@ export const TEAM_ROLES = {
 
 export type TeamRole = typeof TEAM_ROLES[keyof typeof TEAM_ROLES];
 
-export async function getTeamMembership(teamId: string) {
-    const user = await getCurrentDbUser();
-
-    const membership = await prisma.teamMember.findUnique({
+export async function getTeamMembership(teamId: string, userId: string) {
+    return prisma.teamMember.findUnique({
         where: {
             teamId_userId: {
                 teamId,
-                userId: user.id,
+                userId,
             },
         },
         include: {
@@ -23,19 +23,43 @@ export async function getTeamMembership(teamId: string) {
             user: true,
         },
     });
+}
 
-    if (!membership) {
-        throw new ActionError("Accès refusé à cette équipe.", 403);
+export async function assertTeamProjectCapability(
+    teamId: string,
+    capability:
+        | "READ_TEAMS"
+        | "CREATE_TEAM"
+        | "UPDATE_TEAM"
+        | "DELETE_TEAM"
+        | "MANAGE_TEAM_MEMBERS"
+) {
+    const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: {
+            id: true,
+            projectId: true,
+        },
+    });
+
+    if (!team) {
+        throw new ActionError("Équipe introuvable.", 404);
     }
 
-    return membership;
+    const ctx = await assertProjectCapability(team.projectId, capability);
+    return { ctx, team };
 }
 
 export async function assertHasTeamRole(
     teamId: string,
     allowedRoles: TeamRole[]
 ) {
-    const membership = await getTeamMembership(teamId);
+    const user = await getCurrentDbUser();
+    const membership = await getTeamMembership(teamId, user.id);
+
+    if (!membership) {
+        throw new ActionError("Vous n'avez pas accès à cette équipe.", 403);
+    }
 
     if (!allowedRoles.includes(membership.role as TeamRole)) {
         throw new ActionError(

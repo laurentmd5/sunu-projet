@@ -1,7 +1,7 @@
 "use server";
 
 import prisma from "@/lib/prisma";
-import { assertHasProjectRole } from "@/lib/project-roles";
+import { assertProjectCapability } from "@/lib/project-capabilities";
 
 interface CreateActivityLogParams {
     projectId: string;
@@ -26,7 +26,7 @@ export async function createActivityLog(params: CreateActivityLogParams) {
 }
 
 export async function getProjectActivityLogs(projectId: string) {
-    await assertHasProjectRole(projectId, ["OWNER", "MANAGER", "MEMBER"]);
+    await assertProjectCapability(projectId, "VIEW_PROJECT_PROGRESS");
 
     const logs = await prisma.activityLog.findMany({
         where: {

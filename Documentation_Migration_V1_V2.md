@@ -454,3 +454,220 @@ La migration Sunu Projets V1 → V2 a été menée en plusieurs étapes complém
 - validation finale TypeScript et fonctionnelle.
 
 Le résultat obtenu est un socle V2 techniquement cohérent, compilable et fonctionnel sur le périmètre traité, prêt pour la poursuite de la finalisation métier de la version 2.
+
+---
+
+# 15. Avancement complémentaire — lot 3 permissions / rôles / VIEWER (13/04/2026)
+
+## 15.1 Objectif du lot traité
+
+Après stabilisation du schéma V2, un lot complémentaire a été mené pour refondre le noyau d’autorisation métier et commencer l’activation concrète du rôle `VIEWER` côté runtime et côté interface.
+
+Ce lot a porté sur :
+
+- la refonte du noyau permissions autour de `ProjectUser` ;
+- l’introduction d’un système de capabilities réutilisable ;
+- la prise en charge opérationnelle du rôle `VIEWER` et de ses permissions granulaires ;
+- la migration progressive des actions critiques (`activity`, `members`, `tasks`) ;
+- le branchement initial du front sur ces nouvelles règles.
+
+## 15.2 Noyau permissions V2
+
+### 15.2.1 Principe retenu
+
+La logique d’autorisation a été recentrée sur :
+
+- `ProjectUser` comme source d’autorité projet ;
+- `ViewerPermissionGrant` comme source des droits fins des observateurs ;
+- un mapping centralisé entre rôles / grants et capacités métier.
+
+L’objectif était de sortir de la logique V1 fondée principalement sur des vérifications ponctuelles de rôles ou de simples appartenances projet/équipe.
+
+### 15.2.2 Modules ajoutés
+
+Les modules suivants ont été introduits :
+
+- `lib/permissions-core.ts`
+- `lib/project-access.ts`
+- `lib/project-capabilities.ts`
+- `lib/permission-helpers.ts`
+
+### 15.2.3 Rôle de ces modules
+
+Ces modules permettent désormais de :
+
+- centraliser `ActionError` et les types liés aux rôles/capabilities ;
+- récupérer un contexte d’accès projet unifié ;
+- faire porter l’autorisation par des capacités explicites ;
+- fournir des helpers de haut niveau utilisés par les actions serveur.
+
+Exemples de capacités exploitées :
+
+- `READ_PROJECT`
+- `CREATE_TASK`
+- `ASSIGN_TASKS`
+- `MANAGE_MEMBERS`
+- `MANAGE_VIEWERS`
+- `VIEW_PROJECT_PROGRESS`
+- `READ_MEETINGS`
+- `JOIN_MEETING`
+
+## 15.3 Réalignement des wrappers legacy
+
+Pour ne pas casser l’existant d’un seul coup, plusieurs fichiers historiques ont été transformés en wrappers ou façades :
+
+- `lib/permissions.ts`
+- `lib/project-roles.ts`
+- `lib/team-roles.ts`
+
+Résultat :
+
+- compatibilité maintenue avec les imports historiques ;
+- anciens helpers progressivement rebranchés sur le nouveau moteur V2 ;
+- réduction du risque de régression pendant la migration action par action.
+
+## 15.4 Migration des permissions liées aux projets
+
+### 15.4.1 Activity logs
+
+L’accès aux activity logs a été réaligné sur la capacité :
+
+- `VIEW_PROJECT_PROGRESS`
+
+Correction apportée :
+
+- suppression d’une logique V1 encore basée sur `assertHasProjectRole(...)` ;
+- correction d’une erreur constatée quand un `VIEWER` ouvrait une page projet sans disposer des bons droits ;
+- mise en cohérence entre la lecture du projet et la lecture de son activité.
+
+### 15.4.2 Members / rôles
+
+Le domaine `members.ts` a été restructuré afin de séparer clairement :
+
+- les transitions standard `MEMBER <-> MANAGER` ;
+- la gestion spécifique des `VIEWER` ;
+- les permissions granulaires associées aux `VIEWER`.
+
+Changements principaux :
+
+- `updateProjectMemberRole()` restreinte aux transitions `MANAGER` / `MEMBER` ;
+- création de `createProjectViewer()` ;
+- création de `updateViewerPermissions()` ;
+- enrichissement de `getProjectMembersWithRoles()` pour retourner aussi les permissions viewer ;
+- conservation de `removeProjectMember()` avec compatibilité V2.
+
+### 15.4.3 UI projet — gestion des VIEWER
+
+La page projet `/project/[projectId]` a été enrichie avec :
+
+- ajout d’un bloc “Ajouter un observateur” ;
+- choix des permissions viewer via cases à cocher ;
+- affichage des permissions d’un viewer existant ;
+- édition inline des permissions d’un viewer ;
+- retrait d’un viewer depuis l’interface ;
+- séparation définitive entre le flux standard de changement de rôle et le flux viewer.
+
+Des ajustements responsive ont également été réalisés sur cette page afin de préserver un affichage correct sur mobile.
+
+## 15.5 Migration des permissions liées aux tâches
+
+### 15.5.1 Création de tâche
+
+La création de tâche a été adaptée au modèle V2.
+
+Évolutions apportées :
+
+- prise en compte de `CREATE_TASK` côté serveur ;
+- prise en compte de `ASSIGN_TASKS` côté serveur ;
+- possibilité de créer une tâche sans assignation ;
+- `assignToEmail` rendu nullable ;
+- `dueDate` rendue nullable / optionnelle ;
+- rejet des dates passées ;
+- exclusion des `VIEWER` de la liste des personnes assignables ;
+- alignement progressif du front `/new-tasks/[projectId]` avec les nouvelles permissions.
+
+Conséquences fonctionnelles :
+
+- un `VIEWER` disposant seulement de `CREATE_TASK` peut créer une tâche sans l’assigner ;
+- un `VIEWER` disposant aussi de `ASSIGN_TASKS` peut en plus choisir un assigné ;
+- la date peut être masquée pour les profils qui ne doivent pas la définir.
+
+### 15.5.2 Détail de tâche et gestion post-création
+
+La page `/task-details/[taskId]` a été enrichie avec un bloc de gestion visible pour :
+
+- `OWNER`
+- `MANAGER`
+
+Évolutions apportées :
+
+- ajout de `updateTaskManagement()` ;
+- modification de l’assignation après création ;
+- modification de la date d’échéance à tout moment ;
+- possibilité de remettre une tâche en “non assignée” ;
+- exclusion des `VIEWER` des assignables ;
+- date d’échéance toujours optionnelle mais contrôlée côté backend.
+
+### 15.5.3 Mise à jour de statut
+
+La logique de mise à jour de statut a été corrigée pour inclure aussi :
+
+- le `MANAGER`
+
+Ainsi :
+
+- le backend accepte désormais le manager comme acteur légitime pour changer le statut ;
+- le front a été réaligné pour ne pas le bloquer inutilement côté interface.
+
+## 15.6 Exports d’actions
+
+L’index des actions a été mis à jour afin d’exposer les nouvelles capacités introduites, notamment :
+
+- `createProjectViewer`
+- `updateViewerPermissions`
+- `updateTaskManagement`
+
+## 15.7 Vérifications effectuées
+
+Les vérifications suivantes ont été réalisées pendant ce lot :
+
+- builds `npm run build` exécutés avec succès après chaque étape majeure ;
+- validation des flux `VIEWER` côté page projet ;
+- validation de la création de tâche selon `CREATE_TASK` / `ASSIGN_TASKS` ;
+- validation de la création sans assignation ;
+- validation de la gestion ultérieure de la date et de l’assignation par `OWNER` / `MANAGER` ;
+- vérification de l’absence de régression responsive notable sur la page projet ;
+- vérification des guards côté backend et côté front.
+
+## 15.8 Résultat de cette étape
+
+À l’issue de ce lot complémentaire, les éléments suivants peuvent être considérés comme stabilisés :
+
+- noyau permissions V2 centralisé ;
+- support opérationnel du rôle `VIEWER` ;
+- gestion granulaire des permissions viewer ;
+- séparation claire entre rôles standard et observateurs ;
+- activation concrète de plusieurs permissions viewer dans les interfaces ;
+- alignement des workflows critiques `members`, `activity` et `tasks`.
+
+Ce lot constitue une avancée majeure dans la consolidation fonctionnelle de la V2, au-delà de la seule migration de schéma.
+
+## 15.9 Fichiers particulièrement concernés par ce lot
+
+En complément des fichiers déjà listés plus haut, cette étape a particulièrement touché :
+
+- `lib/permissions-core.ts`
+- `lib/project-access.ts`
+- `lib/project-capabilities.ts`
+- `lib/permission-helpers.ts`
+- `lib/permissions.ts`
+- `lib/project-roles.ts`
+- `lib/team-roles.ts`
+- `app/actions/activity.ts`
+- `app/actions/members.ts`
+- `app/actions/tasks.ts`
+- `app/actions/index.ts`
+- `app/project/[projectId]/page.tsx`
+- `app/new-tasks/[projectId]/page.tsx`
+- `app/task-details/[taskId]/page.tsx`
+- `type.ts`

@@ -43,7 +43,8 @@ export function buildProjectTeamsTree<
     T extends {
         id: string;
         parentId: string | null;
-        membersCount: number;
+        directMembersCount: number;
+        effectiveMembersCount: number;
         childrenCount: number;
     }
 >(teams: T[]) {

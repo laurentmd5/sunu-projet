@@ -60,7 +60,8 @@ export type ProjectTeamBase = {
 };
 
 export type ProjectTeamNode = ProjectTeamBase & {
-    membersCount: number;
+    directMembersCount: number;
+    effectiveMembersCount: number;
     childrenCount: number;
     children: ProjectTeamNode[];
     lead?: {

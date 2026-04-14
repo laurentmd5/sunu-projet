@@ -27,12 +27,15 @@ export {
 // Teams
 export {
     createTeam,
+    getProjectTeams,
     getTeamsForCurrentUser,
     getTeamDetails,
     joinTeamByInviteCode,
     getTeamMembers,
     updateTeamMemberRole,
     removeTeamMember,
+    addTeamMember,
+    updateTeamLead,
 } from "./teams";
 
 // Meetings

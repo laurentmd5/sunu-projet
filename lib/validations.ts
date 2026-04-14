@@ -152,3 +152,14 @@ export const updateTeamLeadSchema = z.object({
         .min(1, "Responsable invalide.")
         .nullable(),
 });
+
+export const addTeamMemberSchema = z.object({
+    teamId: z
+        .string()
+        .trim()
+        .min(1, "Équipe invalide."),
+    userId: z
+        .string()
+        .trim()
+        .min(1, "Utilisateur invalide."),
+});

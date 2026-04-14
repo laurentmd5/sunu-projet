@@ -241,8 +241,11 @@ APP_BASE_URL="http://localhost:3000"
 ### 5. Appliquer les migrations Prisma
 
 ```bash
-npx prisma migrate dev
+npx prisma format
+npx prisma validate
 npx prisma generate
+npx prisma migrate dev
+npx prisma db push
 ```
 
 ### 6. Lancer l’application

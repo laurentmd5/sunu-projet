@@ -11,7 +11,7 @@ import {
     updateTeamMemberRole,
 } from "@/app/actions";
 import { TEAM_ROLE_LABELS } from "@/lib/team-role-labels";
-import { Team, TeamMember, TeamRole } from "@/type";
+import { TeamMember, TeamRole } from "@/type";
 import {
     CalendarDays,
     Copy,
@@ -61,7 +61,7 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
     const { email, isLoading } = useAuthUser();
 
     const [teamId, setTeamId] = useState("");
-    const [team, setTeam] = useState<Team | null>(null);
+    const [team, setTeam] = useState<Awaited<ReturnType<typeof getTeamDetails>> | null>(null);
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [loading, setLoading] = useState(true);
     const [membersLoading, setMembersLoading] = useState(false);
@@ -75,7 +75,7 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
         try {
             setLoading(true);
             const data = await getTeamDetails(id);
-            setTeam(data as Team);
+            setTeam(data);
         } catch (error) {
             toast.error(
                 error instanceof Error ? error.message : "Erreur lors du chargement de l’équipe."
@@ -89,7 +89,7 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
         try {
             setMembersLoading(true);
             const data = await getTeamMembers(id);
-            setMembers(data as TeamMember[]);
+            setMembers(data);
         } catch (error) {
             toast.error(
                 error instanceof Error ? error.message : "Erreur lors du chargement des membres."
@@ -393,51 +393,6 @@ const page = ({ params }: { params: Promise<{ teamId: string }> }) => {
                                 imageAlt="Aucun projet dans l'équipe"
                                 message="Aucun projet rattaché à cette équipe"
                             />
-                        )}
-                    </div>
-
-                    <div className="rounded-xl border border-base-300 p-4 md:p-5 shadow-sm mt-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <CalendarDays className="w-4 h-4" />
-                                <h2 className="text-lg font-semibold">Réunions de l'équipe</h2>
-                            </div>
-                        </div>
-
-                        {team?.meetings && team.meetings.length > 0 ? (
-                            <div className="space-y-3">
-                                {team.meetings.map((meeting) => (
-                                    <div
-                                        key={meeting.id}
-                                        className="rounded-lg border border-base-300 p-3"
-                                    >
-                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                            <div className="min-w-0">
-                                                <p className="font-medium break-words">{meeting.title}</p>
-                                                <p className="text-sm opacity-70">
-                                                    {new Date(meeting.scheduledAt).toLocaleString("fr-FR")}
-                                                </p>
-                                                {meeting.project ? (
-                                                    <p className="text-xs opacity-60 mt-1">
-                                                        Projet lié : {meeting.project.name}
-                                                    </p>
-                                                ) : null}
-                                            </div>
-
-                                            <Link
-                                                href={`/meetings/${meeting.id}`}
-                                                className="btn btn-sm btn-outline self-start"
-                                            >
-                                                Voir
-                                            </Link>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-sm opacity-70">
-                                Aucune réunion enregistrée pour cette équipe.
-                            </p>
                         )}
                     </div>
                 </section>

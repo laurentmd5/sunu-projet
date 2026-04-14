@@ -202,6 +202,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const currentUserRole: ProjectRole | null = currentMembership?.role ?? null;
     const currentViewerPermissions = currentMembership?.permissions ?? [];
     const canManageMembers = currentUserRole === "OWNER";
+    const canManageTeams = currentUserRole === "OWNER" || currentUserRole === "MANAGER";
     const canCreateTask =
         currentUserRole === "OWNER" ||
         currentUserRole === "MANAGER" ||
@@ -529,6 +530,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 <ProjectTeamsTab
                     isActive={activeTab === "teams"}
                     projectId={projectId}
+                    canManageTeams={canManageTeams}
                 />
 
                 <ProjectMembersTab

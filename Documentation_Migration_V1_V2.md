@@ -671,3 +671,284 @@ En complément des fichiers déjà listés plus haut, cette étape a particuliè
 - `app/new-tasks/[projectId]/page.tsx`
 - `app/task-details/[taskId]/page.tsx`
 - `type.ts`
+
+
+---
+
+# 16. Avancement complémentaire — lot 4 migration du module Équipes (14/04/2026)
+
+## 16.1 Objectif du lot traité
+
+Après la stabilisation du schéma V2 et du noyau permissions, un lot complémentaire a été mené pour finaliser la migration du module **Équipes** vers une logique pleinement centrée sur le projet.
+
+Ce lot a porté sur :
+
+- le réalignement du domaine `teams` avec la cible V2 ;
+- l’introduction d’une hiérarchie d’équipes exploitable côté runtime et côté interface ;
+- la suppression progressive de la logique V1 d’équipe autonome ;
+- l’intégration du concept de **chef d’équipe** au niveau des équipes racines ;
+- la stabilisation des memberships entre équipes racines et sous-équipes ;
+- le nettoyage final des points d’entrée legacy encore visibles dans l’application.
+
+## 16.2 Principes fonctionnels retenus
+
+### 16.2.1 Recentrage sur le projet
+
+La logique V2 retenue pour les équipes repose désormais sur les principes suivants :
+
+- une équipe appartient obligatoirement à un projet ;
+- la création d’une équipe se fait depuis le projet ;
+- une sous-équipe appartient elle-même au même projet via son équipe racine ;
+- la hiérarchie est limitée à 2 niveaux :
+  - équipe racine ;
+  - sous-équipe.
+
+La page projet devient donc le point d’entrée principal pour consulter, créer et organiser les équipes.
+
+### 16.2.2 Positionnement des sous-équipes
+
+Les sous-équipes ont été interprétées comme des **sous-groupes opérationnels** de l’équipe racine, et non comme des mini-équipes autonomes.
+
+Décisions retenues :
+
+- une sous-équipe n’a pas de chef d’équipe dédié ;
+- une sous-équipe ne porte pas d’autorité projet autonome ;
+- un utilisateur peut appartenir à plusieurs sous-équipes d’une même équipe racine ;
+- une sous-équipe sert principalement à catégoriser et redistribuer le travail au sein de l’équipe racine.
+
+### 16.2.3 Chef d’équipe
+
+Le concept de chef d’équipe a été introduit via `leadUserId` avec les règles suivantes :
+
+- seul une **équipe racine** peut avoir un chef d’équipe ;
+- une sous-équipe ne peut pas avoir de chef ;
+- le chef d’équipe doit appartenir au projet ;
+- un `VIEWER` ne peut pas être chef d’équipe ;
+- un chef d’équipe n’est pas nécessairement un `MANAGER` projet ;
+- le rôle projet reste la source d’autorité globale ;
+- le chef d’équipe représente une responsabilité locale, utile pour les futurs flux d’assignation.
+
+## 16.3 Évolutions du schéma et des types
+
+Le schéma Prisma et les types TypeScript ont été enrichis afin de supporter cette cible.
+
+### 16.3.1 Schéma Prisma
+
+Les évolutions suivantes ont été intégrées :
+
+- ajout de `Team.leadUserId` ;
+- ajout de la relation `Team.lead -> User` ;
+- ajout de la relation inverse `User.ledTeams` ;
+- index dédié sur `leadUserId`.
+
+### 16.3.2 Types front et back
+
+Les types partagés ont été mis à jour afin d’exposer :
+
+- le lead d’une équipe ;
+- les structures hiérarchiques d’équipe ;
+- les compteurs distinguant :
+  - les membres directs ;
+  - les membres effectifs.
+
+Cette évolution a notamment permis de distinguer clairement les besoins d’affichage entre équipe racine et sous-équipe.
+
+## 16.4 Réalignement des actions serveur `teams`
+
+Le fichier `app/actions/teams.ts` a été fortement révisé afin de refléter le modèle V2.
+
+### 16.4.1 Création d’équipe et de sous-équipe
+
+Les actions de création ont été réalignées afin de :
+
+- imposer `projectId` comme ancre métier ;
+- accepter `parentId` pour les sous-équipes ;
+- vérifier la cohérence du parent ;
+- empêcher la création d’une hiérarchie au-delà de 2 niveaux ;
+- interdire la définition d’un chef d’équipe sur une sous-équipe.
+
+### 16.4.2 Lecture des équipes par projet
+
+Une action de lecture dédiée par projet a été consolidée afin de :
+
+- récupérer uniquement les équipes d’un projet donné ;
+- renvoyer une structure hiérarchisée ;
+- exposer les informations du lead ;
+- distinguer les compteurs directs et effectifs.
+
+### 16.4.3 Détail d’équipe
+
+La lecture du détail d’une équipe a été enrichie pour retourner :
+
+- le projet parent ;
+- l’équipe parente si présente ;
+- les sous-équipes ;
+- les membres de l’équipe ;
+- le chef d’équipe si applicable.
+
+### 16.4.4 Gestion du chef d’équipe
+
+Une action dédiée de mise à jour du lead a été ajoutée afin de :
+
+- définir ou retirer un chef d’équipe ;
+- vérifier l’appartenance projet ;
+- interdire explicitement les leads sur sous-équipes ;
+- ajouter automatiquement le lead dans les memberships de l’équipe s’il n’y est pas encore.
+
+## 16.5 Stabilisation des memberships équipe / sous-équipe
+
+Une partie importante du lot a consisté à clarifier la logique d’appartenance entre équipes racines et sous-équipes.
+
+### 16.5.1 Ajout de membre
+
+Une action d’ajout de membre à une équipe a été introduite.
+
+Règles retenues :
+
+- l’utilisateur doit déjà appartenir au projet ;
+- un `VIEWER` ne peut pas être ajouté comme membre d’équipe ;
+- si l’ajout cible une sous-équipe, l’utilisateur est ajouté automatiquement à l’équipe racine si nécessaire ;
+- l’ajout direct à plusieurs sous-équipes d’une même équipe racine reste autorisé.
+
+### 16.5.2 Retrait de membre
+
+La logique de suppression a été ajustée pour refléter la hiérarchie :
+
+- si un membre est retiré d’une équipe racine, il est également retiré des sous-équipes rattachées ;
+- si un membre est retiré d’une sous-équipe, il peut rester membre de l’équipe racine ;
+- le propriétaire d’équipe reste protégé contre une suppression directe.
+
+### 16.5.3 Comptage des effectifs
+
+La logique de calcul des effectifs a été revue pour éviter les doubles comptages.
+
+Décision retenue :
+
+- `directMembersCount` correspond aux memberships directement rattachés à une équipe ;
+- `effectiveMembersCount` correspond, pour une équipe racine, à l’union distincte des membres directs de l’équipe et de ses sous-équipes.
+
+Conséquence :
+
+- un utilisateur présent dans l’équipe racine et dans plusieurs sous-équipes n’est compté qu’une seule fois dans l’effectif de l’équipe racine.
+
+## 16.6 Réalignement des pages et composants front
+
+Le front a été restructuré pour faire disparaître la logique d’équipe autonome de la V1.
+
+### 16.6.1 Page projet
+
+La page projet a été refondue pour introduire une organisation par onglets :
+
+- vue d’ensemble ;
+- tâches ;
+- équipes ;
+- membres ;
+- activité.
+
+L’onglet **Équipes** devient l’entrée principale de consultation et de gestion des équipes du projet.
+
+Cet onglet permet désormais :
+
+- l’affichage hiérarchique des équipes ;
+- la création d’équipes principales ;
+- la création de sous-équipes ;
+- l’affichage et la mise à jour du chef d’équipe ;
+- le chargement à la demande des données liées aux équipes.
+
+### 16.6.2 Page détail équipe
+
+La page `/teams/[teamId]` a été refondue pour devenir une vue de détail V2 contextualisée.
+
+La page affiche désormais :
+
+- le nom et la description de l’équipe ;
+- le rôle courant de l’utilisateur dans l’équipe ;
+- le chef d’équipe pour les équipes racines ;
+- un message explicite indiquant qu’une sous-équipe n’a pas de chef dédié ;
+- le projet parent ;
+- l’équipe parente si l’équipe affichée est une sous-équipe ;
+- les sous-équipes si l’équipe affichée est une équipe racine ;
+- la liste des membres ;
+- une interface minimale d’ajout de membres du projet à l’équipe.
+
+Le bloc d’invitation legacy a été retiré de cette page.
+
+### 16.6.3 Suppression de la page autonome `/teams`
+
+La route `/teams`, héritée de la V1 comme hub autonome des équipes, a été supprimée.
+
+Cette suppression s’accompagne de :
+
+- la suppression du composant `TeamComponent` devenu obsolète ;
+- le retrait du lien de navigation vers la page équipes dans la navbar ;
+- le repositionnement définitif des équipes comme sous-domaine du projet.
+
+## 16.7 Nettoyage du legacy V1
+
+Le lot a aussi porté sur un nettoyage progressif des flux encore marqués par la V1.
+
+### 16.7.1 Flux d’invitation d’équipe
+
+Le flux `joinTeamByInviteCode()` a été conservé temporairement comme compatibilité legacy, mais il a été durci :
+
+- impossibilité de rejoindre une équipe sans appartenir au projet parent ;
+- non-utilisation de ce flux comme point d’entrée principal dans la V2.
+
+### 16.7.2 Libellés et organisation UI
+
+Les écrans ont été réajustés afin d’abandonner les formulations et patterns hérités :
+
+- disparition de la notion d’équipe autonome comme axe principal ;
+- disparition des invitations d’équipe dans les écrans principaux ;
+- recentrage du vocabulaire autour du projet parent et de la hiérarchie d’équipes.
+
+## 16.8 Vérifications effectuées
+
+Les vérifications suivantes ont été menées pendant ce lot :
+
+- builds `npm run build` exécutés avec succès après chaque étape sensible ;
+- validation du chargement et du rendu de la nouvelle page projet à onglets ;
+- validation de l’onglet équipes ;
+- validation de la création d’équipe racine ;
+- validation de la création de sous-équipe ;
+- validation de la mise à jour du chef d’équipe ;
+- validation du détail équipe racine / sous-équipe ;
+- validation de l’ajout de membre à une équipe ;
+- validation du comportement des memberships sur sous-équipe ;
+- validation de la suppression de la page `/teams` après nettoyage du cache `.next`.
+
+## 16.9 Résultat obtenu
+
+À l’issue du lot 4, le module Équipes peut être considéré comme réaligné sur la V2 sur le périmètre traité.
+
+Les éléments suivants sont désormais stabilisés :
+
+- équipes intégrées au projet comme sous-domaine ;
+- hiérarchie racine / sous-équipe cohérente ;
+- chef d’équipe limité aux équipes racines ;
+- memberships conformes au futur modèle de redistribution ;
+- compteurs d’effectifs cohérents ;
+- disparition des principaux points d’entrée V1 autonomes dans l’interface.
+
+Ce lot constitue une étape structurante pour préparer le lot suivant relatif à l’assignation des tâches aux équipes et à leur redistribution interne.
+
+## 16.10 Fichiers particulièrement concernés par ce lot
+
+Cette étape a particulièrement touché :
+
+- `prisma/schema.prisma`
+- `type.ts`
+- `lib/validations.ts`
+- `lib/project-roles.ts`
+- `lib/team-hierarchy.ts`
+- `app/actions/teams.ts`
+- `app/actions/index.ts`
+- `app/actions/members.ts`
+- `app/project/[projectId]/page.tsx`
+- `app/project/[projectId]/ProjectOverviewTab.tsx`
+- `app/project/[projectId]/ProjectMembersTab.tsx`
+- `app/project/[projectId]/ProjectActivityTab.tsx`
+- `app/project/[projectId]/ProjectTeamsTab.tsx`
+- `app/teams/[teamId]/page.tsx`
+- `app/components/navbar.tsx`
+

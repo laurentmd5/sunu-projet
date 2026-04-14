@@ -117,7 +117,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         try {
             setMembersLoading(true);
             const projectMembers = await getProjectMembersWithRoles(projectId);
-            setMembers(projectMembers as ProjectUserMember[]);
+            setMembers(projectMembers.map((member) => ({ ...member, permissions: member.permissions as ViewerPermission[] })));
         } catch (error) {
             console.error("Erreur lors du chargement des membres :", error);
             toast.error(
@@ -134,7 +134,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         try {
             setActivityLoading(true);
             const logs = await getProjectActivityLogs(projectId);
-            setActivityLogs(logs as ActivityLogItem[]);
+            setActivityLogs(logs);
         } catch (error) {
             console.error("Erreur lors du chargement de l'activité :", error);
             if (error && typeof error === "object" && "status" in error && error.status === 403) {
@@ -155,7 +155,13 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         const getId = async () => {
             const resolvedParams = await params;
             setProjectId(resolvedParams.projectId);
-            await fetchInfos(resolvedParams.projectId);
+
+            await Promise.all([
+                fetchInfos(resolvedParams.projectId),
+                fetchMembers(resolvedParams.projectId),
+            ]);
+
+            setMembersLoaded(true);
         };
         getId();
     }, [params]);
@@ -183,14 +189,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     useEffect(() => {
         if (!projectId) return;
 
-        if (activeTab === "members" && !membersLoaded) {
-            fetchMembers(projectId).then(() => setMembersLoaded(true));
-        }
-
         if ((activeTab === "activity" || activeTab === "overview") && !activityLoaded) {
             fetchActivityLogs(projectId).then(() => setActivityLoaded(true));
         }
-    }, [activeTab, projectId, membersLoaded, activityLoaded]);
+    }, [activeTab, projectId, activityLoaded]);
 
     const currentMembership = useMemo(() => {
         if (!email) return null;

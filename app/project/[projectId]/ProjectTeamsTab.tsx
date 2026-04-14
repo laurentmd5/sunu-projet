@@ -55,9 +55,7 @@ export default function ProjectTeamsTab({
     const [updatingLeadTeamId, setUpdatingLeadTeamId] = useState<string | null>(null);
 
     const eligibleLeadMembers = useMemo(() => {
-        return members.filter(
-            (member) => member.role === "OWNER" || member.role === "MANAGER"
-        );
+        return members.filter((member) => member.role !== "VIEWER");
     }, [members]);
 
     const loadTeams = async (force = false) => {
@@ -388,7 +386,7 @@ function RootTeamCard({
                     <div className="flex flex-wrap gap-2 mt-3 text-xs">
                         <span className="badge badge-outline">
                             <Users className="w-3 h-3 mr-1" />
-                            {team.membersCount} membre(s)
+                            {team.effectiveMembersCount} membre(s)
                         </span>
                         <span className="badge badge-outline">
                             <Layers3 className="w-3 h-3 mr-1" />
@@ -536,7 +534,7 @@ function RootTeamCard({
 
                                     <div className="flex flex-wrap gap-2 mt-2 text-xs">
                                         <span className="badge badge-outline">
-                                            {child.membersCount} membre(s)
+                                            {child.directMembersCount} membre(s)
                                         </span>
                                     </div>
                                 </div>

@@ -12,9 +12,7 @@ import {
 } from "@/app/actions";
 
 import EmptyState from "@/app/components/EmptyState";
-import ProjectComponent from "@/app/components/ProjectComponent";
 import TaskComponent from "@/app/components/TaskComponent";
-import UserInfo from "@/app/components/UserInfo";
 import Wrapper from "@/app/components/Wrapper";
 import { PROJECT_ROLE_LABELS } from "@/lib/project-role-labels";
 import { TASK_STATUSES } from "@/lib/task-status";
@@ -22,21 +20,21 @@ import { Project, ProjectRole, ProjectUserMember } from "@/type";
 import { ViewerPermission } from "@/lib/permissions-core";
 import { useAuthUser } from "@/lib/auth-client";
 import {
-    ArrowRight,
-    Building2,
     CircleCheckBig,
     CopyPlus,
-    Crown,
     ListTodo,
     Loader,
-    ShieldCheck,
     SlidersHorizontal,
     UserCheck,
-    Users,
 } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
+
+import ProjectOverviewTab from "./ProjectOverviewTab";
+import ProjectMembersTab from "./ProjectMembersTab";
+import ProjectActivityTab from "./ProjectActivityTab";
+import ProjectTeamsTab from "./ProjectTeamsTab";
 
 const ROLE_ORDER: Record<ProjectRole, number> = {
     OWNER: 0,
@@ -44,44 +42,6 @@ const ROLE_ORDER: Record<ProjectRole, number> = {
     VIEWER: 2,
     MEMBER: 3,
 };
-
-const ROLE_SECTION_META: Record<
-    ProjectRole,
-    { title: string; icon: React.ReactNode; empty: string }
-> = {
-    OWNER: {
-        title: "Propriétaire",
-        icon: <Crown className="w-4 h-4" />,
-        empty: "Aucun propriétaire",
-    },
-    MANAGER: {
-        title: "Managers",
-        icon: <ShieldCheck className="w-4 h-4" />,
-        empty: "Aucun manager",
-    },
-    VIEWER: {
-        title: "Observateurs",
-        icon: <UserCheck className="w-4 h-4" />,
-        empty: "Aucun observateur",
-    },
-    MEMBER: {
-        title: "Membres",
-        icon: <Users className="w-4 h-4" />,
-        empty: "Aucun membre",
-    },
-};
-
-const VIEWER_PERMISSION_OPTIONS: {
-    value: ViewerPermission;
-    label: string;
-}[] = [
-    { value: "VIEW_PROJECT_PROGRESS", label: "Voir l'avancement du projet" },
-    { value: "VIEW_MEMBER_STATS", label: "Voir les statistiques des membres" },
-    { value: "ASSIGN_TASKS", label: "Assigner des tâches" },
-    { value: "CREATE_TASK", label: "Créer des tâches" },
-    { value: "VIEW_MEETINGS", label: "Voir les réunions" },
-    { value: "JOIN_MEETINGS", label: "Rejoindre les réunions" },
-];
 
 type PendingRoleChange = {
     memberUserId: string;
@@ -106,6 +66,8 @@ type ActivityLogItem = {
         email: string;
     };
 };
+
+type ProjectTabKey = "overview" | "tasks" | "teams" | "members" | "activity";
 
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const { email, isLoading } = useAuthUser();
@@ -137,6 +99,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [editingViewerUserId, setEditingViewerUserId] = useState<string | null>(null);
     const [editingViewerPermissions, setEditingViewerPermissions] = useState<ViewerPermission[]>([]);
     const [isUpdatingViewerPermissions, setIsUpdatingViewerPermissions] = useState(false);
+
+    const [activeTab, setActiveTab] = useState<ProjectTabKey>("overview");
+    const [membersLoaded, setMembersLoaded] = useState(false);
+    const [activityLoaded, setActivityLoaded] = useState(false);
 
     const fetchInfos = async (projectId: string) => {
         try {
@@ -189,9 +155,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         const getId = async () => {
             const resolvedParams = await params;
             setProjectId(resolvedParams.projectId);
-            fetchInfos(resolvedParams.projectId);
-            fetchMembers(resolvedParams.projectId);
-            fetchActivityLogs(resolvedParams.projectId);
+            await fetchInfos(resolvedParams.projectId);
         };
         getId();
     }, [params]);
@@ -216,6 +180,18 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         }
     }, [project, email]);
 
+    useEffect(() => {
+        if (!projectId) return;
+
+        if (activeTab === "members" && !membersLoaded) {
+            fetchMembers(projectId).then(() => setMembersLoaded(true));
+        }
+
+        if ((activeTab === "activity" || activeTab === "overview") && !activityLoaded) {
+            fetchActivityLogs(projectId).then(() => setActivityLoaded(true));
+        }
+    }, [activeTab, projectId, membersLoaded, activityLoaded]);
+
     const currentMembership = useMemo(() => {
         if (!email) return null;
         return members.find((member) => member.user.email === email) || null;
@@ -231,10 +207,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             currentViewerPermissions.includes("CREATE_TASK"));
     const canDeleteTask =
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
-
-    const projectTeamIds = useMemo(() => {
-        return new Set((project?.teams ?? []).map((team) => team.id));
-    }, [project]);
 
     const groupedMembers = useMemo(() => {
         const sorted = [...members].sort((a, b) => {
@@ -259,18 +231,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         const assignedMatch = !assignedFilter || task?.user?.email === email;
         return statusMatch && assignedMatch;
     });
-
-    function toggleViewerPermission(
-        permission: ViewerPermission,
-        selected: ViewerPermission[],
-        setSelected: React.Dispatch<React.SetStateAction<ViewerPermission[]>>
-    ) {
-        if (selected.includes(permission)) {
-            setSelected(selected.filter((p) => p !== permission));
-        } else {
-            setSelected([...selected, permission]);
-        }
-    }
 
     if (isLoading) {
         return (
@@ -322,6 +282,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             );
             await fetchMembers(projectId);
             await fetchActivityLogs(projectId);
+            setMembersLoaded(true);
+            setActivityLoaded(true);
             toast.success("Rôle mis à jour avec succès");
             closeRoleChangeModal();
         } catch (error) {
@@ -349,6 +311,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             await removeProjectMember(projectId, pendingRemoval.memberUserId);
             await fetchMembers(projectId);
             await fetchActivityLogs(projectId);
+            setMembersLoaded(true);
+            setActivityLoaded(true);
             toast.success("Collaborateur retiré avec succès");
             closeRemoveMemberModal();
         } catch (error) {
@@ -366,6 +330,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             setViewerPermissions([]);
             await fetchMembers(projectId);
             await fetchActivityLogs(projectId);
+            setMembersLoaded(true);
+            setActivityLoaded(true);
             toast.success("Observateur ajouté avec succès");
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
@@ -396,6 +362,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             setEditingViewerPermissions([]);
             await fetchMembers(projectId);
             await fetchActivityLogs(projectId);
+            setMembersLoaded(true);
+            setActivityLoaded(true);
             toast.success("Permissions mises à jour avec succès");
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
@@ -416,305 +384,51 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         setPendingRemoval(null);
     };
 
-    const renderMemberCard = (member: ProjectUserMember) => {
-        const isOwner = member.role === "OWNER";
-        const isCurrentUser = member.user.email === email;
-
-        return (
-            <div
-                key={member.userId}
-                className={`rounded-lg border p-3 ${isOwner ? "border-primary/40 bg-base-200/60" : "border-base-300"
-                    }`}
-            >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 flex-1">
-                        <p className="font-medium break-words">
-                            {member.user.name || "Utilisateur"}
-                            {isCurrentUser && (
-                                <span className="ml-2 text-xs opacity-70">(Vous)</span>
-                            )}
-                        </p>
-                        <p className="text-sm opacity-70 break-all">{member.user.email}</p>
-                    </div>
-
-                    <span
-                        className={`badge shrink-0 ${isOwner ? "badge-primary" : "badge-outline"
-                            }`}
-                    >
-                        {PROJECT_ROLE_LABELS[member.role]}
-                    </span>
-                </div>
-
-                {member.role === "VIEWER" && (
-                    <div className="mt-3 space-y-2">
-                        <div className="flex flex-wrap gap-2">
-                            {member.permissions?.length ? (
-                                member.permissions.map((permission) => (
-                                    <span key={permission} className="badge badge-outline badge-sm">
-                                        {permission}
-                                    </span>
-                                ))
-                            ) : (
-                                <span className="text-xs opacity-70">Aucune permission</span>
-                            )}
-                        </div>
-
-                        {canManageMembers && (
-                            <>
-                                <button
-                                    className="btn btn-outline btn-xs w-full"
-                                    onClick={() =>
-                                        startEditViewerPermissions(member.userId, member.permissions ?? [])
-                                    }
-                                >
-                                    Modifier permissions
-                                </button>
-
-                                <button
-                                    onClick={() => requestRemoveMember(member)}
-                                    className="btn btn-error btn-outline btn-xs w-full"
-                                >
-                                    Retirer
-                                </button>
-                            </>
-                        )}
-
-                        {editingViewerUserId === member.userId && (
-                            <div className="mt-2 p-3 border border-base-300 rounded-lg">
-                                <div className="grid gap-2 mb-3">
-                                    {VIEWER_PERMISSION_OPTIONS.map((option) => (
-                                        <label
-                                            key={option.value}
-                                            className="label cursor-pointer justify-start gap-3"
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                className="checkbox checkbox-sm"
-                                                checked={editingViewerPermissions.includes(option.value)}
-                                                onChange={() =>
-                                                    toggleViewerPermission(
-                                                        option.value,
-                                                        editingViewerPermissions,
-                                                        setEditingViewerPermissions
-                                                    )
-                                                }
-                                            />
-                                            <span className="label-text">{option.label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-
-                                <div className="flex flex-col gap-2 sm:flex-row">
-                                    <button
-                                        className="btn btn-primary btn-xs"
-                                        onClick={handleUpdateViewerPermissions}
-                                        disabled={isUpdatingViewerPermissions}
-                                    >
-                                        {isUpdatingViewerPermissions ? "Enregistrement..." : "Enregistrer"}
-                                    </button>
-                                    <button
-                                        className="btn btn-ghost btn-xs"
-                                        onClick={() => {
-                                            setEditingViewerUserId(null);
-                                            setEditingViewerPermissions([]);
-                                        }}
-                                    >
-                                        Annuler
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {canManageMembers && !isOwner && member.role !== "VIEWER" && (
-                    <div className="mt-3 space-y-2">
-                        <select
-                            className="select select-bordered select-sm w-full"
-                            value={member.role}
-                            onChange={(e) =>
-                                requestRoleChange(
-                                    member,
-                                    e.target.value as "MANAGER" | "MEMBER"
-                                )
-                            }
-                        >
-                            <option value="MEMBER">Membre</option>
-                            <option value="MANAGER">Manager</option>
-                        </select>
-
-                        <button
-                            onClick={() => requestRemoveMember(member)}
-                            className="btn btn-sm btn-error btn-outline w-full"
-                        >
-                            Retirer
-                        </button>
-                    </div>
-                )}
-            </div>
-        );
-    };
-
     return (
         <Wrapper>
-            <div className="flex flex-col gap-6 lg:flex-row">
-                <aside className="w-full lg:w-[340px] xl:w-[380px] shrink-0">
-                    <div className="p-5 border border-base-300 rounded-xl">
-                        <UserInfo
-                            role="Créé par"
-                            email={project?.createdBy?.email || null}
-                            name={project?.createdBy?.name || null}
-                        />
-                    </div>
+            <div className="space-y-6">
+                <div className="flex flex-wrap gap-2 border-b border-base-300 pb-4">
+                    <button
+                        onClick={() => setActiveTab("overview")}
+                        className={`btn btn-sm ${activeTab === "overview" ? "btn-primary" : "btn-ghost"}`}
+                    >
+                        Aperçu
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("tasks")}
+                        className={`btn btn-sm ${activeTab === "tasks" ? "btn-primary" : "btn-ghost"}`}
+                    >
+                        Tâches
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("teams")}
+                        className={`btn btn-sm ${activeTab === "teams" ? "btn-primary" : "btn-ghost"}`}
+                    >
+                        Équipes
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("members")}
+                        className={`btn btn-sm ${activeTab === "members" ? "btn-primary" : "btn-ghost"}`}
+                    >
+                        Membres
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("activity")}
+                        className={`btn btn-sm ${activeTab === "activity" ? "btn-primary" : "btn-ghost"}`}
+                    >
+                        Activité
+                    </button>
+                </div>
 
-                    <div className="p-5 border border-base-300 rounded-xl mt-6">
-                        <div className="flex flex-col items-start gap-3 mb-4 xl:flex-row xl:items-center xl:justify-between">
-                            <h2 className="font-semibold text-lg leading-tight">
-                                Membres du projet
-                            </h2>
+                <ProjectOverviewTab
+                    isActive={activeTab === "overview"}
+                    project={project}
+                    taskCount={project?.tasks?.length || 0}
+                    activityPreview={activityLogs.slice(0, 5)}
+                />
 
-                            {currentUserRole && (
-                                <div className="badge badge-primary w-fit max-w-full whitespace-normal text-left h-auto py-2">
-                                    Mon rôle : {PROJECT_ROLE_LABELS[currentUserRole]}
-                                </div>
-                            )}
-                        </div>
-
-                        {canManageMembers ? (
-                            <p className="text-xs opacity-70 mb-4 leading-6">
-                                Vous pouvez modifier les rôles des managers et membres, ainsi que retirer
-                                des collaborateurs du projet.
-                            </p>
-                        ) : (
-                            <p className="text-xs opacity-70 mb-4 leading-6">
-                                Vue en lecture seule des collaborateurs du projet.
-                            </p>
-                        )}
-
-                        {canManageMembers && (
-                            <div className="p-4 border border-base-300 rounded-xl mb-4">
-                                <h3 className="font-semibold mb-3">Ajouter un observateur</h3>
-
-                                <input
-                                    type="email"
-                                    className="input input-bordered w-full mb-3"
-                                    placeholder="Email du viewer"
-                                    value={viewerEmail}
-                                    onChange={(e) => setViewerEmail(e.target.value)}
-                                />
-
-                                <div className="grid gap-2 mb-4">
-                                    {VIEWER_PERMISSION_OPTIONS.map((option) => (
-                                        <label
-                                            key={option.value}
-                                            className="label cursor-pointer justify-start gap-3"
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                className="checkbox checkbox-sm"
-                                                checked={viewerPermissions.includes(option.value)}
-                                                onChange={() =>
-                                                    toggleViewerPermission(
-                                                        option.value,
-                                                        viewerPermissions,
-                                                        setViewerPermissions
-                                                    )
-                                                }
-                                            />
-                                            <span className="label-text">{option.label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-
-                                <button
-                                    className="btn btn-primary btn-sm"
-                                    onClick={handleCreateViewer}
-                                    disabled={isCreatingViewer || !viewerEmail.trim()}
-                                >
-                                    {isCreatingViewer ? "Ajout..." : "Ajouter le viewer"}
-                                </button>
-                            </div>
-                        )}
-
-                        {membersLoading ? (
-                            <p className="text-sm opacity-70">Chargement des membres...</p>
-                        ) : members.length > 0 ? (
-                            <div className="space-y-5">
-                                {(["OWNER", "MANAGER", "VIEWER", "MEMBER"] as ProjectRole[]).map((roleKey) => {
-                                    const sectionMembers = groupedMembers[roleKey];
-                                    const meta = ROLE_SECTION_META[roleKey];
-
-                                    return (
-                                        <div key={roleKey}>
-                                            <div className="flex items-center gap-2 mb-3">
-                                                {meta.icon}
-                                                <h3 className="text-sm font-semibold">{meta.title}</h3>
-                                                <span className="text-xs opacity-60">
-                                                    ({sectionMembers.length})
-                                                </span>
-                                            </div>
-
-                                            {sectionMembers.length > 0 ? (
-                                                <div className="space-y-3">
-                                                    {sectionMembers.map(renderMemberCard)}
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm opacity-60">{meta.empty}</p>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <p className="text-sm opacity-70">Aucun membre trouvé.</p>
-                        )}
-                    </div>
-
-                    <div className="w-full mt-6">
-                        {project && (
-                            <ProjectComponent project={project} admin={0} style={false} />
-                        )}
-                    </div>
-
-                    <div className="p-5 border border-base-300 rounded-xl mt-6">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Building2 className="w-4 h-4" />
-                            <h2 className="font-semibold text-lg leading-tight">Équipe liée</h2>
-                        </div>
-
-                        {project?.teams && project.teams.length > 0 ? (
-                            <div className="space-y-3">
-                                <div className="rounded-lg border border-base-300 p-3">
-                                    <p className="font-medium break-words">{project.teams[0]?.name}</p>
-                                    <p className="text-sm opacity-70 mt-1">
-                                        Ce projet est rattaché à une équipe.
-                                    </p>
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                    <Link
-                                        href={`/teams/${project.teams[0]?.id}`}
-                                        className="btn btn-sm btn-outline w-full"
-                                    >
-                                        Voir l'équipe
-                                        <ArrowRight className="w-4 h-4" />
-                                    </Link>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                <div className="rounded-lg border border-dashed border-base-300 p-3">
-                                    <p className="text-sm opacity-70">
-                                        Ce projet n'est rattaché à aucune équipe pour le moment.
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </aside>
-
-                <section className="min-w-0 flex-1">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                {activeTab === "tasks" && (
+                    <div className="space-y-4">
                         <div className="flex flex-col gap-2">
                             <div className="flex flex-wrap gap-2">
                                 <button
@@ -730,8 +444,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
                                 <button
                                     onClick={() => setStatusFilter(TASK_STATUSES.TODO)}
-                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.TODO ? "btn-primary" : ""
-                                        }`}
+                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.TODO ? "btn-primary" : ""}`}
                                 >
                                     <ListTodo className="w-4" />
                                     À faire ({taskCounts.todo})
@@ -739,8 +452,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
                                 <button
                                     onClick={() => setStatusFilter(TASK_STATUSES.IN_PROGRESS)}
-                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.IN_PROGRESS ? "btn-primary" : ""
-                                        }`}
+                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.IN_PROGRESS ? "btn-primary" : ""}`}
                                 >
                                     <Loader className="w-4" />
                                     En Cours ({taskCounts.inProgress})
@@ -748,8 +460,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
                                 <button
                                     onClick={() => setStatusFilter(TASK_STATUSES.DONE)}
-                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.DONE ? "btn-primary" : ""
-                                        }`}
+                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.DONE ? "btn-primary" : ""}`}
                                 >
                                     <CircleCheckBig className="w-4" />
                                     Terminée(s) ({taskCounts.done})
@@ -768,183 +479,193 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         {canCreateTask && (
                             <Link
                                 href={`/new-tasks/${projectId}`}
-                                className="btn btn-sm self-start xl:self-auto"
+                                className="btn btn-sm self-start"
                             >
                                 Nouvelle tâche
                                 <CopyPlus className="w-4" />
                             </Link>
                         )}
-                    </div>
 
-                    <div className="mt-6 border border-base-300 p-4 md:p-5 shadow-sm rounded-xl">
-                        {filteredTasks && filteredTasks.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="table table-lg">
-                                    <thead>
-                                        <tr>
-                                            <th></th>
-                                            <th>Titre</th>
-                                            <th>Assigné à</th>
-                                            <th className="hidden md:table-cell">À livrer le</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredTasks.map((task, index) => (
-                                            <tr key={task.id} className="border-t last:border-none">
-                                                <TaskComponent
-                                                    task={task}
-                                                    index={index}
-                                                    onDelete={deleteTask}
-                                                    canDelete={canDeleteTask}
-                                                />
+                        <div className="border border-base-300 p-4 md:p-5 shadow-sm rounded-xl">
+                            {filteredTasks && filteredTasks.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="table table-lg">
+                                        <thead>
+                                            <tr>
+                                                <th></th>
+                                                <th>Titre</th>
+                                                <th>Assigné à</th>
+                                                <th className="hidden md:table-cell">À livrer le</th>
+                                                <th>Actions</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <EmptyState
-                                imageSrc="/empty-task.png"
-                                imageAlt="Picture of an empty project"
-                                message="0 tâche à afficher"
-                            />
-                        )}
-                    </div>
-
-                    <div className="mt-6 border border-base-300 p-4 md:p-5 shadow-sm rounded-xl">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-lg font-semibold">Activité récente</h2>
+                                        </thead>
+                                        <tbody>
+                                            {filteredTasks.map((task, index) => (
+                                                <tr key={task.id} className="border-t last:border-none">
+                                                    <TaskComponent
+                                                        task={task}
+                                                        index={index}
+                                                        onDelete={deleteTask}
+                                                        canDelete={canDeleteTask}
+                                                    />
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <EmptyState
+                                    imageSrc="/empty-task.png"
+                                    imageAlt="Picture of an empty project"
+                                    message="0 tâche à afficher"
+                                />
+                            )}
                         </div>
+                    </div>
+                )}
 
-                        {activityLoading ? (
-                            <p className="text-sm opacity-70">Chargement de l'activité...</p>
-                        ) : activityLogs.length > 0 ? (
-                            <div className="space-y-3">
-                                {activityLogs.map((log) => (
-                                    <div
-                                        key={log.id}
-                                        className="border border-base-300 rounded-lg p-3"
-                                    >
-                                        <p className="text-sm break-words">{log.message}</p>
-                                        <p className="text-xs opacity-60 mt-1">
-                                            {new Date(log.createdAt).toLocaleString("fr-FR")}
-                                        </p>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-sm opacity-70">
-                                Aucune activité récente pour ce projet.
-                            </p>
+                <ProjectTeamsTab
+                    isActive={activeTab === "teams"}
+                    projectId={projectId}
+                />
+
+                <ProjectMembersTab
+                    isActive={activeTab === "members"}
+                    members={members}
+                    membersLoading={membersLoading}
+                    groupedMembers={groupedMembers}
+                    email={email}
+                    currentUserRole={currentUserRole}
+                    canManageMembers={canManageMembers}
+                    viewerEmail={viewerEmail}
+                    setViewerEmail={setViewerEmail}
+                    viewerPermissions={viewerPermissions}
+                    setViewerPermissions={setViewerPermissions}
+                    isCreatingViewer={isCreatingViewer}
+                    handleCreateViewer={handleCreateViewer}
+                    editingViewerUserId={editingViewerUserId}
+                    editingViewerPermissions={editingViewerPermissions}
+                    setEditingViewerUserId={setEditingViewerUserId}
+                    setEditingViewerPermissions={setEditingViewerPermissions}
+                    isUpdatingViewerPermissions={isUpdatingViewerPermissions}
+                    handleUpdateViewerPermissions={handleUpdateViewerPermissions}
+                    startEditViewerPermissions={startEditViewerPermissions}
+                    requestRoleChange={requestRoleChange}
+                    requestRemoveMember={requestRemoveMember}
+                />
+
+                <ProjectActivityTab
+                    isActive={activeTab === "activity"}
+                    loading={activityLoading}
+                    logs={activityLogs}
+                />
+
+                <dialog id="confirm_role_change_modal" className="modal">
+                    <div className="modal-box">
+                        <form method="dialog">
+                            <button
+                                className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+                                onClick={closeRoleChangeModal}
+                            >
+                                ✕
+                            </button>
+                        </form>
+
+                        <h3 className="font-bold text-lg">Confirmer le changement de rôle</h3>
+
+                        {pendingRoleChange && (
+                            <>
+
+                                <p className="py-3 text-sm opacity-80">
+                                    Vous êtes sur le point de modifier le rôle de{" "}
+                                    <strong>{pendingRoleChange.memberName}</strong>.
+                                </p>
+
+                                <div className="alert alert-warning mb-4">
+                                    <span>
+                                        Rôle actuel :{" "}
+                                        <strong>{PROJECT_ROLE_LABELS[pendingRoleChange.currentRole]}</strong>
+                                        {" → "}
+                                        Nouveau rôle :{" "}
+                                        <strong>{PROJECT_ROLE_LABELS[pendingRoleChange.newRole]}</strong>
+                                    </span>
+                                </div>
+                            </>
                         )}
+
+                        <div className="modal-action">
+                            <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={closeRoleChangeModal}
+                                disabled={isSubmittingSensitiveAction}
+                            >
+                                Annuler
+                            </button>
+
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={confirmRoleChange}
+                                disabled={!pendingRoleChange || isSubmittingSensitiveAction}
+                            >
+                                Confirmer
+                            </button>
+                        </div>
                     </div>
-                </section>
+                </dialog>
+
+                <dialog id="confirm_remove_member_modal" className="modal">
+                    <div className="modal-box">
+                        <form method="dialog">
+                            <button
+                                className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+                                onClick={closeRemoveMemberModal}
+                            >
+                                ✕
+                            </button>
+                        </form>
+
+                        <h3 className="font-bold text-lg">Retirer ce collaborateur</h3>
+
+                        {pendingRemoval && (
+                            <>
+
+                                <p className="py-3 text-sm opacity-80">
+                                    Vous êtes sur le point de retirer{" "}
+                                    <strong>{pendingRemoval.memberName}</strong> de ce projet.
+                                </p>
+
+                                <div className="alert alert-warning mb-4">
+                                    <span>
+                                        Cette personne perdra l'accès au projet et à ses tâches associées.
+                                    </span>
+                                </div>
+                            </>
+                        )}
+
+                        <div className="modal-action">
+                            <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={closeRemoveMemberModal}
+                                disabled={isSubmittingSensitiveAction}
+                            >
+                                Annuler
+                            </button>
+
+                            <button
+                                type="button"
+                                className="btn btn-error"
+                                onClick={confirmRemoveMember}
+                                disabled={!pendingRemoval || isSubmittingSensitiveAction}
+                            >
+                                Retirer du projet
+                            </button>
+                        </div>
+                    </div>
+                </dialog>
             </div>
-
-            <dialog id="confirm_role_change_modal" className="modal">
-                <div className="modal-box">
-                    <form method="dialog">
-                        <button
-                            className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-                            onClick={closeRoleChangeModal}
-                        >
-                            ✕
-                        </button>
-                    </form>
-
-                    <h3 className="font-bold text-lg">Confirmer le changement de rôle</h3>
-
-                    {pendingRoleChange && (
-                        <>
-                            <p className="py-3 text-sm opacity-80">
-                                Vous êtes sur le point de modifier le rôle de{" "}
-                                <strong>{pendingRoleChange.memberName}</strong>.
-                            </p>
-
-                            <div className="alert alert-warning mb-4">
-                                <span>
-                                    Rôle actuel :{" "}
-                                    <strong>{PROJECT_ROLE_LABELS[pendingRoleChange.currentRole]}</strong>
-                                    {" → "}
-                                    Nouveau rôle :{" "}
-                                    <strong>{PROJECT_ROLE_LABELS[pendingRoleChange.newRole]}</strong>
-                                </span>
-                            </div>
-                        </>
-                    )}
-
-                    <div className="modal-action">
-                        <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={closeRoleChangeModal}
-                            disabled={isSubmittingSensitiveAction}
-                        >
-                            Annuler
-                        </button>
-
-                        <button
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={confirmRoleChange}
-                            disabled={!pendingRoleChange || isSubmittingSensitiveAction}
-                        >
-                            Confirmer
-                        </button>
-                    </div>
-                </div>
-            </dialog>
-
-            <dialog id="confirm_remove_member_modal" className="modal">
-                <div className="modal-box">
-                    <form method="dialog">
-                        <button
-                            className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-                            onClick={closeRemoveMemberModal}
-                        >
-                            ✕
-                        </button>
-                    </form>
-
-                    <h3 className="font-bold text-lg">Retirer ce collaborateur</h3>
-
-                    {pendingRemoval && (
-                        <>
-                            <p className="py-3 text-sm opacity-80">
-                                Vous êtes sur le point de retirer{" "}
-                                <strong>{pendingRemoval.memberName}</strong> de ce projet.
-                            </p>
-
-                            <div className="alert alert-warning mb-4">
-                                <span>
-                                    Cette personne perdra l’accès au projet et à ses tâches associées.
-                                </span>
-                            </div>
-                        </>
-                    )}
-
-                    <div className="modal-action">
-                        <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={closeRemoveMemberModal}
-                            disabled={isSubmittingSensitiveAction}
-                        >
-                            Annuler
-                        </button>
-
-                        <button
-                            type="button"
-                            className="btn btn-error"
-                            onClick={confirmRemoveMember}
-                            disabled={!pendingRemoval || isSubmittingSensitiveAction}
-                        >
-                            Retirer du projet
-                        </button>
-                    </div>
-                </div>
-            </dialog>
         </Wrapper>
     );
 };

@@ -73,6 +73,7 @@ model User {
   activityLogs ActivityLog[] @relation("ActivityActor")
 
   createdTeams           Team[]             @relation("CreatedTeams")
+  ledTeams               Team[]             @relation("TeamLead")
   teamMembers            TeamMember[]
   createdMeetings        TeamMeeting[]      @relation("CreatedMeetings")
   addedMeetingRecordings MeetingRecording[] @relation("RecordingAddedBy")
@@ -96,13 +97,16 @@ model Team {
   createdById String @db.VarChar(36)
   createdBy   User   @relation("CreatedTeams", fields: [createdById], references: [id])
 
-  projectId String @db.VarChar(36)
-  parentId  String? @db.VarChar(36)
+  projectId  String  @db.VarChar(36)
+  parentId   String? @db.VarChar(36)
+  leadUserId String? @db.VarChar(36)
 
   project Project @relation("ProjectTeams", fields: [projectId], references: [id], onDelete: Cascade)
 
   parent   Team?  @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children Team[] @relation("TeamHierarchy")
+
+  lead User? @relation("TeamLead", fields: [leadUserId], references: [id], onDelete: SetNull)
 
   members    TeamMember[]
   meetings   TeamMeeting[]
@@ -111,6 +115,7 @@ model Team {
 
   @@index([projectId])
   @@index([parentId])
+  @@index([leadUserId])
 }
 
 model TeamMember {
@@ -154,10 +159,10 @@ model Project {
 }
 
 model Task {
-  id                  String      @id @default(uuid()) @db.VarChar(36)
+  id                  String     @id @default(uuid()) @db.VarChar(36)
   name                String
   description         String
-  status              TaskStatus  @default(TODO)
+  status              TaskStatus @default(TODO)
   dueDate             DateTime?
   solutionDescription String?
 

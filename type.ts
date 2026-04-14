@@ -56,12 +56,18 @@ export type ProjectTeamBase = {
     createdById: string;
     projectId: string;
     parentId: string | null;
+    leadUserId: string | null;
 };
 
 export type ProjectTeamNode = ProjectTeamBase & {
     membersCount: number;
     childrenCount: number;
     children: ProjectTeamNode[];
+    lead?: {
+        id: string;
+        name: string | null;
+        email: string;
+    } | null;
 };
 
 export type ProjectTeamsSummary = {
@@ -80,6 +86,7 @@ export type CreateTeamInput = {
     name: string;
     description?: string;
     parentId?: string | null;
+    leadUserId?: string | null;
 };
 
 export type Team = PrismaTeam & {
@@ -89,6 +96,11 @@ export type Team = PrismaTeam & {
     meetings?: TeamMeeting[];
     parent?: Team | null;
     children?: Team[];
+    lead?: {
+        id: string;
+        name: string | null;
+        email: string;
+    } | null;
 };
 
 export type Project = PrismaProject & {
@@ -123,6 +135,12 @@ export type Project = PrismaProject & {
         createdById?: string;
         projectId?: string;
         parentId?: string | null;
+        leadUserId?: string | null;
+        lead?: {
+            id: string;
+            name: string | null;
+            email: string;
+        } | null;
     }>;
     meetings?: TeamMeeting[];
 };

@@ -96,6 +96,12 @@ export const createTeamSchema = z.object({
         .min(1, "Sous-équipe invalide.")
         .optional()
         .nullable(),
+    leadUserId: z
+        .string()
+        .trim()
+        .min(1, "Responsable invalide.")
+        .optional()
+        .nullable(),
 });
 
 export const getProjectTeamsSchema = z.object({
@@ -133,4 +139,16 @@ export const removeTeamMemberSchema = z.object({
         .string()
         .trim()
         .min(1, "Utilisateur invalide."),
+});
+
+export const updateTeamLeadSchema = z.object({
+    teamId: z
+        .string()
+        .trim()
+        .min(1, "Équipe invalide."),
+    leadUserId: z
+        .string()
+        .trim()
+        .min(1, "Responsable invalide.")
+        .nullable(),
 });

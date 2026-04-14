@@ -73,3 +73,64 @@ export const updateTaskStatusSchema = z.object({
         .max(2000, "La description de solution est trop longue.")
         .optional(),
 });
+
+export const createTeamSchema = z.object({
+    projectId: z
+        .string()
+        .trim()
+        .min(1, "Projet invalide."),
+    name: z
+        .string()
+        .trim()
+        .min(2, "Le nom de l'équipe doit contenir au moins 2 caractères.")
+        .max(100, "Le nom de l'équipe est trop long."),
+    description: z
+        .string()
+        .trim()
+        .max(1000, "La description est trop longue.")
+        .optional()
+        .or(z.literal("")),
+    parentId: z
+        .string()
+        .trim()
+        .min(1, "Sous-équipe invalide.")
+        .optional()
+        .nullable(),
+});
+
+export const getProjectTeamsSchema = z.object({
+    projectId: z
+        .string()
+        .trim()
+        .min(1, "Projet invalide."),
+});
+
+export const getTeamDetailsSchema = z.object({
+    teamId: z
+        .string()
+        .trim()
+        .min(1, "Équipe invalide."),
+});
+
+export const updateTeamRoleSchema = z.object({
+    teamId: z
+        .string()
+        .trim()
+        .min(1, "Équipe invalide."),
+    memberUserId: z
+        .string()
+        .trim()
+        .min(1, "Utilisateur invalide."),
+    newRole: z.enum(["OWNER", "MEMBER"]),
+});
+
+export const removeTeamMemberSchema = z.object({
+    teamId: z
+        .string()
+        .trim()
+        .min(1, "Équipe invalide."),
+    memberUserId: z
+        .string()
+        .trim()
+        .min(1, "Utilisateur invalide."),
+});

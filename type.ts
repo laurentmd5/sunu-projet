@@ -47,11 +47,48 @@ export type TeamMember = {
     };
 };
 
+export type ProjectTeamBase = {
+    id: string;
+    name: string;
+    description: string | null;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+    createdById: string;
+    projectId: string;
+    parentId: string | null;
+};
+
+export type ProjectTeamNode = ProjectTeamBase & {
+    membersCount: number;
+    childrenCount: number;
+    children: ProjectTeamNode[];
+};
+
+export type ProjectTeamsSummary = {
+    rootTeamsCount: number;
+    subteamsCount: number;
+    totalTeamsCount: number;
+};
+
+export type ProjectTeamsResult = {
+    teamsTree: ProjectTeamNode[];
+    summary: ProjectTeamsSummary;
+};
+
+export type CreateTeamInput = {
+    projectId: string;
+    name: string;
+    description?: string;
+    parentId?: string | null;
+};
+
 export type Team = PrismaTeam & {
     createdBy?: User;
     members?: TeamMember[];
     project?: Project;
     meetings?: TeamMeeting[];
+    parent?: Team | null;
+    children?: Team[];
 };
 
 export type Project = PrismaProject & {

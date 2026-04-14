@@ -30,7 +30,6 @@ export {
     getProjectTeams,
     getTeamsForCurrentUser,
     getTeamDetails,
-    joinTeamByInviteCode,
     getTeamMembers,
     updateTeamMemberRole,
     removeTeamMember,

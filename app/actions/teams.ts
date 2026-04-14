@@ -19,14 +19,6 @@ import {
 } from "@/lib/validations";
 import type { ProjectTeamsResult } from "@/type";
 
-const joinTeamSchema = z.object({
-    inviteCode: z
-        .string()
-        .trim()
-        .min(6, "Code d'invitation invalide.")
-        .max(64, "Code d'invitation invalide."),
-});
-
 function generateUniqueCode(): string {
     return randomBytes(6).toString("hex");
 }
@@ -460,73 +452,6 @@ export async function getTeamDetails(teamId: string) {
             childrenCount: child._count.children,
         })),
     };
-}
-
-// LEGACY V1
-// À conserver temporairement pour la page /teams,
-// mais ne plus utiliser comme source principale du front V2.
-// En V2, l'entrée normale d'un membre passe par le projet,
-// puis l'affectation aux équipes.
-export async function joinTeamByInviteCode(inviteCode: string) {
-    const parsed = joinTeamSchema.parse({ inviteCode });
-    const user = await getCurrentDbUser();
-
-    const team = await prisma.team.findUnique({
-        where: {
-            inviteCode: parsed.inviteCode,
-        },
-        select: {
-            id: true,
-            projectId: true,
-        },
-    });
-
-    if (!team) {
-        throw new ActionError("Code d'invitation invalide.", 404);
-    }
-
-    const projectMembership = await prisma.projectUser.findUnique({
-        where: {
-            userId_projectId: {
-                userId: user.id,
-                projectId: team.projectId,
-            },
-        },
-    });
-
-    if (!projectMembership) {
-        throw new ActionError(
-            "Vous devez d'abord appartenir au projet avant de rejoindre cette équipe.",
-            403
-        );
-    }
-
-    const existingMembership = await prisma.teamMember.findUnique({
-        where: {
-            teamId_userId: {
-                teamId: team.id,
-                userId: user.id,
-            },
-        },
-    });
-
-    if (existingMembership) {
-        throw new ActionError("Vous appartenez déjà à cette équipe.", 400);
-    }
-
-    await prisma.teamMember.create({
-        data: {
-            teamId: team.id,
-            userId: user.id,
-            role: "MEMBER",
-        },
-    });
-
-    revalidatePath("/teams");
-    revalidatePath(`/teams/${team.id}`);
-    revalidatePath(`/project/${team.projectId}`);
-
-    return { success: true, message: "Vous avez rejoint l'équipe avec succès." };
 }
 
 export async function getTeamMembers(teamId: string) {

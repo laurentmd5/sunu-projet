@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { createTeam, getProjectTeams } from "@/app/actions/teams";
+import React, { useEffect, useMemo, useState } from "react";
+import { createTeam, getProjectTeams, updateTeamLead } from "@/app/actions/teams";
 import EmptyState from "@/app/components/EmptyState";
-import type { ProjectTeamNode, ProjectTeamsResult } from "@/type";
+import type { ProjectTeamNode, ProjectTeamsResult, ProjectUserMember } from "@/type";
 import Link from "next/link";
 import {
     ArrowRight,
     Building2,
+    Crown,
     Layers3,
     Plus,
     Users,
@@ -18,6 +19,7 @@ type Props = {
     projectId: string;
     isActive: boolean;
     canManageTeams: boolean;
+    members: ProjectUserMember[];
 };
 
 type TeamFormState = {
@@ -34,6 +36,7 @@ export default function ProjectTeamsTab({
     projectId,
     isActive,
     canManageTeams,
+    members,
 }: Props) {
     const [data, setData] = useState<ProjectTeamsResult | null>(null);
     const [loading, setLoading] = useState(false);
@@ -46,6 +49,16 @@ export default function ProjectTeamsTab({
     const [expandedRootId, setExpandedRootId] = useState<string | null>(null);
     const [subteamForms, setSubteamForms] = useState<Record<string, TeamFormState>>({});
     const [creatingSubteamFor, setCreatingSubteamFor] = useState<string | null>(null);
+
+    const [editingLeadTeamId, setEditingLeadTeamId] = useState<string | null>(null);
+    const [selectedLeadUserId, setSelectedLeadUserId] = useState<string>("");
+    const [updatingLeadTeamId, setUpdatingLeadTeamId] = useState<string | null>(null);
+
+    const eligibleLeadMembers = useMemo(() => {
+        return members.filter(
+            (member) => member.role === "OWNER" || member.role === "MANAGER"
+        );
+    }, [members]);
 
     const loadTeams = async (force = false) => {
         if (!projectId) return;
@@ -85,12 +98,7 @@ export default function ProjectTeamsTab({
 
         try {
             setCreatingRoot(true);
-            await createTeam(
-                rootForm.name,
-                rootForm.description,
-                projectId,
-                null
-            );
+            await createTeam(rootForm.name, rootForm.description, projectId, null);
             toast.success("Équipe créée avec succès.");
             resetRootForm();
             await loadTeams(true);
@@ -115,12 +123,7 @@ export default function ProjectTeamsTab({
 
         try {
             setCreatingSubteamFor(parentId);
-            await createTeam(
-                form.name,
-                form.description,
-                projectId,
-                parentId
-            );
+            await createTeam(form.name, form.description, projectId, parentId);
             toast.success("Sous-équipe créée avec succès.");
             setSubteamForms((prev) => ({
                 ...prev,
@@ -137,6 +140,35 @@ export default function ProjectTeamsTab({
         } finally {
             setCreatingSubteamFor(null);
         }
+    };
+
+    const handleUpdateLead = async (teamId: string) => {
+        try {
+            setUpdatingLeadTeamId(teamId);
+            await updateTeamLead(teamId, selectedLeadUserId || null);
+            toast.success("Chef d'équipe mis à jour avec succès.");
+            setEditingLeadTeamId(null);
+            setSelectedLeadUserId("");
+            await loadTeams(true);
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Erreur lors de la mise à jour du chef d'équipe."
+            );
+        } finally {
+            setUpdatingLeadTeamId(null);
+        }
+    };
+
+    const openLeadEditor = (team: ProjectTeamNode) => {
+        setEditingLeadTeamId(team.id);
+        setSelectedLeadUserId(team.lead?.id ?? "");
+    };
+
+    const cancelLeadEditor = () => {
+        setEditingLeadTeamId(null);
+        setSelectedLeadUserId("");
     };
 
     const toggleRootExpansion = (teamId: string) => {
@@ -265,12 +297,20 @@ export default function ProjectTeamsTab({
                             key={team.id}
                             team={team}
                             canManageTeams={canManageTeams}
+                            eligibleLeadMembers={eligibleLeadMembers}
                             isExpanded={expandedRootId === team.id}
                             onToggleExpand={() => toggleRootExpansion(team.id)}
                             subteamForm={subteamForms[team.id] ?? EMPTY_FORM}
                             onUpdateSubteamForm={updateSubteamForm}
                             onCreateSubteam={handleCreateSubteam}
                             isCreatingSubteam={creatingSubteamFor === team.id}
+                            editingLeadTeamId={editingLeadTeamId}
+                            selectedLeadUserId={selectedLeadUserId}
+                            setSelectedLeadUserId={setSelectedLeadUserId}
+                            openLeadEditor={openLeadEditor}
+                            cancelLeadEditor={cancelLeadEditor}
+                            handleUpdateLead={handleUpdateLead}
+                            updatingLeadTeamId={updatingLeadTeamId}
                         />
                     ))}
                 </div>
@@ -282,15 +322,24 @@ export default function ProjectTeamsTab({
 function RootTeamCard({
     team,
     canManageTeams,
+    eligibleLeadMembers,
     isExpanded,
     onToggleExpand,
     subteamForm,
     onUpdateSubteamForm,
     onCreateSubteam,
     isCreatingSubteam,
+    editingLeadTeamId,
+    selectedLeadUserId,
+    setSelectedLeadUserId,
+    openLeadEditor,
+    cancelLeadEditor,
+    handleUpdateLead,
+    updatingLeadTeamId,
 }: {
     team: ProjectTeamNode;
     canManageTeams: boolean;
+    eligibleLeadMembers: ProjectUserMember[];
     isExpanded: boolean;
     onToggleExpand: () => void;
     subteamForm: TeamFormState;
@@ -301,7 +350,16 @@ function RootTeamCard({
     ) => void;
     onCreateSubteam: (parentId: string) => void;
     isCreatingSubteam: boolean;
+    editingLeadTeamId: string | null;
+    selectedLeadUserId: string;
+    setSelectedLeadUserId: React.Dispatch<React.SetStateAction<string>>;
+    openLeadEditor: (team: ProjectTeamNode) => void;
+    cancelLeadEditor: () => void;
+    handleUpdateLead: (teamId: string) => void;
+    updatingLeadTeamId: string | null;
 }) {
+    const isEditingLead = editingLeadTeamId === team.id;
+
     return (
         <div className="rounded-xl border border-base-300 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -314,6 +372,18 @@ function RootTeamCard({
                     <p className="text-sm opacity-70 mt-1 break-words">
                         {team.description || "Aucune description."}
                     </p>
+
+                    <div className="mt-3">
+                        <div className="flex items-center gap-2 text-sm">
+                            <Crown className="w-4 h-4" />
+                            <span className="font-medium">Chef d'équipe :</span>
+                            <span className="opacity-80">
+                                {team.lead
+                                    ? `${team.lead.name || "Utilisateur"} (${team.lead.email})`
+                                    : "Aucun chef d'équipe"}
+                            </span>
+                        </div>
+                    </div>
 
                     <div className="flex flex-wrap gap-2 mt-3 text-xs">
                         <span className="badge badge-outline">
@@ -337,16 +407,65 @@ function RootTeamCard({
                     </Link>
 
                     {canManageTeams && (
-                        <button
-                            className="btn btn-sm btn-outline"
-                            onClick={onToggleExpand}
-                        >
-                            <Plus className="w-4 h-4" />
-                            Sous-équipe
-                        </button>
+                        <>
+                            <button
+                                className="btn btn-sm btn-outline"
+                                onClick={() => openLeadEditor(team)}
+                            >
+                                Chef d'équipe
+                            </button>
+
+                            <button
+                                className="btn btn-sm btn-outline"
+                                onClick={onToggleExpand}
+                            >
+                                <Plus className="w-4 h-4" />
+                                Sous-équipe
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
+
+            {isEditingLead && canManageTeams && (
+                <div className="mt-4 rounded-lg border border-base-300 p-4 bg-base-200/20">
+                    <h4 className="font-medium mb-3">Définir le chef d'équipe</h4>
+
+                    <div className="grid gap-3">
+                        <select
+                            className="select select-bordered w-full"
+                            value={selectedLeadUserId}
+                            onChange={(e) => setSelectedLeadUserId(e.target.value)}
+                        >
+                            <option value="">Aucun chef d'équipe</option>
+                            {eligibleLeadMembers.map((member) => (
+                                <option key={member.userId} value={member.userId}>
+                                    {member.user.name || member.user.email} — {member.role}
+                                </option>
+                            ))}
+                        </select>
+
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            <button
+                                className="btn btn-primary btn-sm"
+                                onClick={() => handleUpdateLead(team.id)}
+                                disabled={updatingLeadTeamId === team.id}
+                            >
+                                {updatingLeadTeamId === team.id
+                                    ? "Enregistrement..."
+                                    : "Enregistrer"}
+                            </button>
+                            <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={cancelLeadEditor}
+                                disabled={updatingLeadTeamId === team.id}
+                            >
+                                Annuler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {isExpanded && canManageTeams && (
                 <div className="mt-4 rounded-lg border border-base-300 p-4 bg-base-200/20">
@@ -405,6 +524,16 @@ function RootTeamCard({
                                     <p className="text-sm opacity-70 mt-1 break-words">
                                         {child.description || "Aucune description."}
                                     </p>
+
+                                    <div className="mt-2 text-sm">
+                                        <span className="font-medium">Chef d'équipe : </span>
+                                        <span className="opacity-80">
+                                            {child.lead
+                                                ? `${child.lead.name || "Utilisateur"} (${child.lead.email})`
+                                                : "Aucun"}
+                                        </span>
+                                    </div>
+
                                     <div className="flex flex-wrap gap-2 mt-2 text-xs">
                                         <span className="badge badge-outline">
                                             {child.membersCount} membre(s)

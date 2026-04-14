@@ -531,6 +531,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     isActive={activeTab === "teams"}
                     projectId={projectId}
                     canManageTeams={canManageTeams}
+                    members={members}
                 />
 
                 <ProjectMembersTab

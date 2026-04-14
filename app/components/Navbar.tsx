@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, FolderKanban, Menu, UsersRound, X } from "lucide-react";
+import { CalendarDays, FolderKanban, Menu, X } from "lucide-react";
 import React, { useState } from "react";
 import LocalLogoutButton from "./LocalLogoutButton";
 import LocalUserBadge from "./LocalUserBadge";
@@ -12,7 +12,6 @@ const Navbar = () => {
     const pathname = usePathname();
 
     const navLinks = [
-        { href: "/teams", label: "Équipes", icon: <UsersRound className="w-4 h-4" /> },
         { href: "/meetings", label: "Réunions", icon: <CalendarDays className="w-4 h-4" /> },
         { href: "/general-projects", label: "Collaborations", icon: null },
         { href: "/", label: "Mes projets", icon: null },

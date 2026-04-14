@@ -4,6 +4,7 @@ import { createTask, getProjectInfo, getProjectMembersWithRoles, getProjectUsers
 import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper';
 import { Project, ProjectRole, ProjectUserMember } from '@/type';
+import { ViewerPermission } from '@/lib/permissions-core';
 import { useAuthUser } from "@/lib/auth-client";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -75,7 +76,31 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     }, [members, currentEmail]);
 
     const currentUserRole: ProjectRole | null = currentMembership?.role ?? null;
-    const canCreateTask = currentUserRole === "OWNER" || currentUserRole === "MANAGER";
+    const currentViewerPermissions = currentMembership?.permissions ?? [];
+    const canCreateTask =
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER" ||
+        (currentUserRole === "VIEWER" &&
+            currentViewerPermissions.includes("CREATE_TASK"));
+    const canAssignTasks =
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER" ||
+        (currentUserRole === "VIEWER" &&
+            currentViewerPermissions.includes("ASSIGN_TASKS"));
+    const canSetDueDate =
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER" ||
+        canAssignTasks;
+
+    const assignableUsers = useMemo(() => {
+        const allowedIds = new Set(
+            members
+                .filter((member) => member.role !== "VIEWER")
+                .map((member) => member.user.id)
+        );
+
+        return usersProject.filter((user) => allowedIds.has(user.id));
+    }, [usersProject, members]);
 
     if (isLoading) {
         return (
@@ -97,12 +122,24 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             return;
         }
 
-        if (!name || !description || !selectedUser || !projectId || !dueDate) {
+        if (!name || !description || !projectId) {
             toast.error("Veuillez remplir tous les champs obligatoires");
             return;
         }
+
+        if (selectedUser && !canAssignTasks) {
+            toast.error("Vous pouvez créer une tâche, mais pas l'assigner.");
+            return;
+        }
+
         try {
-            await createTask(name, description, dueDate, projectId, selectedUser.email);
+            await createTask(
+                name,
+                description,
+                dueDate,
+                projectId,
+                selectedUser ? selectedUser.email : null
+            );
             router.push(`/project/${projectId}`);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
@@ -125,25 +162,42 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 {!canCreateTask && members.length > 0 && (
                     <div className="alert alert-warning mt-4">
                         <span>
-                            Vous pouvez consulter ce projet, mais seuls le propriétaire et les managers
-                            peuvent créer des tâches.
+                            Vous pouvez consulter ce projet, mais vous n'avez pas la permission de créer des tâches.
+                        </span>
+                    </div>
+                )}
+                {canCreateTask && !canAssignTasks && (
+                    <div className="alert alert-info mt-4">
+                        <span>
+                            Vous pouvez créer une tâche, mais pas l'assigner à un collaborateur.
                         </span>
                     </div>
                 )}
                 <div className='flex flex-col md:flex-row md:justify-between'>
                     <div className='md:w-1/4'>
-                        <AssignTask users={usersProject} projectId={projectId} onAssignTask={handleUserSelect} />
-                        <div className='flex justify-between items-center mt-4'>
-                            <span className='badge w-20 mr-2'>
-                                À livrer
-                            </span>
-                            <input
-                                placeholder="Date d'échéance"
-                                className='input input-bordered border border-base-300'
-                                type="date"
-                                onChange={(e) => setDueDate(new Date(e.target.value))}
-                                disabled={!canCreateTask} />
-                        </div>
+                        {canAssignTasks ? (
+                            <AssignTask users={assignableUsers} projectId={projectId} onAssignTask={handleUserSelect} />
+                        ) : (
+                            <div className="rounded-2xl border border-base-300 p-4">
+                                <p className="text-sm opacity-70">
+                                    Aucune assignation. Vous pouvez créer la tâche sans l'assigner.
+                                </p>
+                            </div>
+                        )}
+                        {canSetDueDate && (
+                            <div className='flex justify-between items-center mt-4'>
+                                <span className='badge w-20 mr-2'>
+                                    À livrer
+                                </span>
+                                <input
+                                    placeholder="Date d'échéance"
+                                    className='input input-bordered border border-base-300'
+                                    type="date"
+                                    min={new Date().toISOString().split("T")[0]}
+                                    onChange={(e) => setDueDate(new Date(e.target.value))}
+                                    disabled={!canCreateTask} />
+                            </div>
+                        )}
                     </div>
                     <div className='md:w-3/4 mt-4 md:mt-0 md:ml-4'>
                         <div className='flex flex-col justify-between w-full'>

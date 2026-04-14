@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { assertProjectMember, assertTaskAccess, ActionError } from "@/lib/permissions";
+import { assertProjectMember, assertTaskAccess, ActionError, assertCanCreateTask, assertCanAssignTasks } from "@/lib/permissions";
 import { sendTaskAssignmentEmail } from "@/lib/email";
 import { TASK_STATUSES } from "@/lib/task-status";
 import { createActivityLog } from "./activity";
@@ -10,9 +10,9 @@ import { createActivityLog } from "./activity";
 const createTaskSchema = z.object({
     name: z.string().min(1, "Le nom de la tâche est requis"),
     description: z.string().optional(),
-    dueDate: z.date().optional(),
+    dueDate: z.date().nullable().optional(),
     projectId: z.string().min(1, "L'ID du projet est requis"),
-    assignToEmail: z.string().email("Email invalide").optional(),
+    assignToEmail: z.string().trim().email("Email invalide").nullable().optional(),
 });
 
 const taskStatusSchema = z.enum([
@@ -27,6 +27,12 @@ const updateTaskStatusSchema = z.object({
     taskId: z.string().min(1, "L'ID de la tâche est requis"),
     newStatus: taskStatusSchema,
     solutionDescription: z.string().optional(),
+});
+
+const updateTaskManagementSchema = z.object({
+    taskId: z.string().min(1, "L'ID de la tâche est requis"),
+    assignToEmail: z.string().trim().email("Email invalide").nullable().optional(),
+    dueDate: z.date().nullable().optional(),
 });
 
 export async function createTask(
@@ -44,39 +50,42 @@ export async function createTask(
         assignToEmail,
     });
 
-    const { user } = await assertProjectMember(parsed.projectId);
+    if (parsed.dueDate && parsed.dueDate < new Date(new Date().setHours(0, 0, 0, 0))) {
+        throw new ActionError("La date d'échéance ne peut pas être dans le passé.", 400);
+    }
 
-    let assignedUserId: string | null = user.id;
-    let assignedUserEmail: string | null = user.email;
-    let assignedUserName: string | null = user.name;
+    const { user } = await assertCanCreateTask(parsed.projectId);
+
+    let assignedUserId: string | null = null;
+    let assignedUserEmail: string | null = null;
+    let assignedUserName: string | null = null;
 
     if (parsed.assignToEmail) {
-        const assignedUser = await prisma.user.findUnique({
-            where: { email: parsed.assignToEmail },
-        });
+        await assertCanAssignTasks(parsed.projectId);
 
-        if (!assignedUser) {
-            throw new ActionError("Utilisateur assigné introuvable.", 404);
-        }
-
-        const assignedUserHasAccess = await prisma.project.findFirst({
+        const assignedMembership = await prisma.projectUser.findFirst({
             where: {
-                id: parsed.projectId,
-                OR: [
-                    { createdById: assignedUser.id },
-                    { users: { some: { userId: assignedUser.id } } },
-                ],
+                projectId: parsed.projectId,
+                user: {
+                    email: parsed.assignToEmail,
+                },
             },
-            select: { id: true },
+            include: {
+                user: true,
+            },
         });
 
-        if (!assignedUserHasAccess) {
-            throw new ActionError("L'utilisateur assigné n'appartient pas à ce projet.", 400);
+        if (!assignedMembership) {
+            throw new ActionError("Utilisateur assigné introuvable dans ce projet.", 404);
         }
 
-        assignedUserId = assignedUser.id;
-        assignedUserEmail = assignedUser.email;
-        assignedUserName = assignedUser.name;
+        if (assignedMembership.role === "VIEWER") {
+            throw new ActionError("Un observateur ne peut pas être assigné à une tâche.", 400);
+        }
+
+        assignedUserId = assignedMembership.userId;
+        assignedUserEmail = assignedMembership.user.email;
+        assignedUserName = assignedMembership.user.name;
     }
 
     const newTask = await prisma.task.create({
@@ -178,6 +187,98 @@ export const getTaskDetails = async (taskId: string) => {
     return task;
 };
 
+export async function updateTaskManagement(
+    taskId: string,
+    assignToEmail: string | null,
+    dueDate: Date | null
+) {
+    const parsed = updateTaskManagementSchema.parse({
+        taskId,
+        assignToEmail,
+        dueDate,
+    });
+
+    const { user, task } = await assertTaskAccess(parsed.taskId);
+
+    const membership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId: user.id,
+                projectId: task.projectId,
+            },
+        },
+        select: {
+            role: true,
+        },
+    });
+
+    const canManageTask =
+        task.project.createdById === user.id ||
+        membership?.role === "MANAGER";
+
+    if (!canManageTask) {
+        throw new ActionError(
+            "Seuls le propriétaire du projet ou un manager peuvent modifier l'assignation ou l'échéance.",
+            403
+        );
+    }
+
+    if (parsed.dueDate && parsed.dueDate < new Date(new Date().setHours(0, 0, 0, 0))) {
+        throw new ActionError("La date d'échéance ne peut pas être dans le passé.", 400);
+    }
+
+    let assignedUserId: string | null = null;
+    let assignedUserName: string | null = null;
+
+    if (parsed.assignToEmail) {
+        const assignedMembership = await prisma.projectUser.findFirst({
+            where: {
+                projectId: task.projectId,
+                user: {
+                    email: parsed.assignToEmail,
+                },
+            },
+            include: {
+                user: true,
+            },
+        });
+
+        if (!assignedMembership) {
+            throw new ActionError("Utilisateur assigné introuvable dans ce projet.", 404);
+        }
+
+        if (assignedMembership.role === "VIEWER") {
+            throw new ActionError("Un observateur ne peut pas être assigné à une tâche.", 400);
+        }
+
+        assignedUserId = assignedMembership.userId;
+        assignedUserName = assignedMembership.user.name;
+    }
+
+    const updatedTask = await prisma.task.update({
+        where: { id: parsed.taskId },
+        data: {
+            userId: assignedUserId,
+            dueDate: parsed.dueDate ?? null,
+        },
+    });
+
+    await createActivityLog({
+        projectId: task.projectId,
+        actorUserId: user.id,
+        type: "TASK_CREATED",
+        message: assignedUserName
+            ? `${user.name} a mis à jour la gestion de la tâche "${task.name}" et l'a assignée à ${assignedUserName}.`
+            : `${user.name} a mis à jour la gestion de la tâche "${task.name}".`,
+    });
+
+    return {
+        success: true,
+        message: "Gestion de la tâche mise à jour avec succès.",
+        task: updatedTask,
+    };
+}
+
 export const updateTaskStatus = async (
     taskId: string,
     newStatus: "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "CANCELLED",
@@ -191,10 +292,23 @@ export const updateTaskStatus = async (
 
     const { user, task } = await assertTaskAccess(parsed.taskId);
 
+    const membership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId: user.id,
+                projectId: task.projectId,
+            },
+        },
+        select: {
+            role: true,
+        },
+    });
+
     const canUpdate =
         task.userId === user.id ||
         task.createdById === user.id ||
-        task.project.createdById === user.id;
+        task.project.createdById === user.id ||
+        membership?.role === "MANAGER";
 
     if (!canUpdate) {
         throw new ActionError("Vous n'êtes pas autorisé à modifier cette tâche.", 403);

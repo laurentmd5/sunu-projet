@@ -20,6 +20,8 @@ export {
     getProjectMembersWithRoles,
     updateProjectMemberRole,
     removeProjectMember,
+    createProjectViewer,
+    updateViewerPermissions,
 } from "./members";
 
 // Teams
@@ -54,6 +56,7 @@ export {
     createTask,
     deleteTaskById,
     getTaskDetails,
+    updateTaskManagement,
     updateTaskStatus,
 } from "./tasks";
 

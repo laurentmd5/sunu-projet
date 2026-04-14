@@ -1,5 +1,5 @@
 "use client"
-import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskStatus } from '@/app/actions'
+import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskManagement, updateTaskStatus } from '@/app/actions'
 import EmptyState from '@/app/components/EmptyState'
 import UserInfo from '@/app/components/UserInfo'
 import Wrapper from '@/app/components/Wrapper'
@@ -23,6 +23,9 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const [status, setStatus] = useState<TaskStatus>(TASK_STATUSES.TODO)
     const [solution, setSolution] = useState("")
     const [realStatus, setRealStatus] = useState<TaskStatus>(TASK_STATUSES.TODO)
+    const [selectedAssigneeEmail, setSelectedAssigneeEmail] = useState<string>("");
+    const [managementDueDate, setManagementDueDate] = useState<string>("");
+    const [isSubmittingManagement, setIsSubmittingManagement] = useState(false);
 
     const modules = {
         toolbar: [
@@ -43,6 +46,10 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             setTask(task)
             setStatus(task.status)
             setRealStatus(task.status)
+            setSelectedAssigneeEmail(task.user?.email || "");
+            setManagementDueDate(
+                task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] || "" : ""
+            );
             await fetchProject(task.projectId)
             await fetchMembers(task.projectId)
         } catch (error) {
@@ -96,8 +103,37 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const canUpdateStatus = !!task && (
         task.user?.email === email ||
         task.createdBy?.email === email ||
-        currentUserRole === "OWNER"
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER"
     );
+
+    const canManageTaskSettings =
+        currentUserRole === "OWNER" || currentUserRole === "MANAGER";
+
+    const assignableMembers = useMemo(() => {
+        return members.filter((member) => member.role !== "VIEWER");
+    }, [members]);
+
+    const handleSaveTaskManagement = async () => {
+        if (!task) return;
+
+        try {
+            setIsSubmittingManagement(true);
+
+            await updateTaskManagement(
+                task.id,
+                selectedAssigneeEmail || null,
+                managementDueDate ? new Date(managementDueDate) : null
+            );
+
+            await fetchInfos(task.id);
+            toast.success("Gestion de la tâche mise à jour");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsSubmittingManagement(false);
+        }
+    };
 
     const handleStatusChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         const newStatus = event.target.value as TaskStatus;
@@ -196,6 +232,55 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         {task.name}
                     </h1>
 
+                    {canManageTaskSettings && (
+                        <div className="p-5 border border-base-300 rounded-xl my-4">
+                            <h2 className="font-semibold text-lg mb-4">Gestion de la tâche</h2>
+
+                            <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                <div className="flex-1">
+                                    <label className="label">
+                                        <span className="label-text">Assigné à</span>
+                                    </label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={selectedAssigneeEmail}
+                                        onChange={(e) => setSelectedAssigneeEmail(e.target.value)}
+                                    >
+                                        <option value="">Non assignée</option>
+                                        {assignableMembers.map((member) => (
+                                            <option key={member.userId} value={member.user.email}>
+                                                {member.user.name || member.user.email}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex-1">
+                                    <label className="label">
+                                        <span className="label-text">Date d'échéance</span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        className="input input-bordered w-full"
+                                        value={managementDueDate}
+                                        min={new Date().toISOString().split("T")[0]}
+                                        onChange={(e) => setManagementDueDate(e.target.value)}
+                                    />
+                                </div>
+
+                                <div>
+                                    <button
+                                        className="btn btn-primary w-full md:w-auto"
+                                        onClick={handleSaveTaskManagement}
+                                        disabled={isSubmittingManagement}
+                                    >
+                                        {isSubmittingManagement ? "Enregistrement..." : "Enregistrer"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className='flex justify-between items-center mb-4'>
                         <span>
                             À livré le
@@ -206,8 +291,8 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         <div className="flex flex-col items-end gap-2">
                             {!canUpdateStatus && (
                                 <span className="text-xs opacity-70">
-                                    Seuls l’assigné, le créateur de la tâche ou le propriétaire du projet
-                                    peuvent modifier le statut.
+                                    Seuls l'assigné, le créateur de la tâche, le propriétaire du projet
+                                    ou un manager peuvent modifier le statut.
                                 </span>
                             )}
                             <select

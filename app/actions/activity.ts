@@ -6,7 +6,7 @@ import { assertProjectCapability } from "@/lib/project-capabilities";
 interface CreateActivityLogParams {
     projectId: string;
     actorUserId: string;
-    type: "PROJECT_CREATED" | "MEMBER_JOINED" | "MEMBER_ROLE_UPDATED" | "MEMBER_REMOVED" | "TASK_CREATED" | "TASK_STATUS_UPDATED";
+    type: "PROJECT_CREATED" | "MEMBER_JOINED" | "MEMBER_ROLE_UPDATED" | "MEMBER_REMOVED" | "TASK_CREATED" | "TASK_STATUS_UPDATED" | "VIEWER_INVITED" | "VIEWER_PERMISSIONS_UPDATED";
     message: string;
 }
 

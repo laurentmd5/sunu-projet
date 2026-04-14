@@ -8,6 +8,7 @@ import {
     TeamMeeting as PrismaTeamMeeting,
     User,
 } from "@prisma/client";
+import { ViewerPermission } from "./lib/permissions-core";
 
 export type ProjectRole = "OWNER" | "MANAGER" | "VIEWER" | "MEMBER";
 export type TeamRole = "OWNER" | "MEMBER";
@@ -25,6 +26,7 @@ export type ProjectUserMember = {
     userId: string;
     role: ProjectRole;
     scope?: ProjectCollaboratorScope;
+    permissions?: ViewerPermission[];
     user: {
         id: string;
         name: string | null;

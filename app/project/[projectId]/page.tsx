@@ -1,12 +1,14 @@
 "use client";
 
 import {
+    createProjectViewer,
     deleteTaskById,
     getProjectActivityLogs,
     getProjectInfo,
     getProjectMembersWithRoles,
     removeProjectMember,
     updateProjectMemberRole,
+    updateViewerPermissions,
 } from "@/app/actions";
 
 import EmptyState from "@/app/components/EmptyState";
@@ -17,6 +19,7 @@ import Wrapper from "@/app/components/Wrapper";
 import { PROJECT_ROLE_LABELS } from "@/lib/project-role-labels";
 import { TASK_STATUSES } from "@/lib/task-status";
 import { Project, ProjectRole, ProjectUserMember } from "@/type";
+import { ViewerPermission } from "@/lib/permissions-core";
 import { useAuthUser } from "@/lib/auth-client";
 import {
     ArrowRight,
@@ -68,11 +71,23 @@ const ROLE_SECTION_META: Record<
     },
 };
 
+const VIEWER_PERMISSION_OPTIONS: {
+    value: ViewerPermission;
+    label: string;
+}[] = [
+    { value: "VIEW_PROJECT_PROGRESS", label: "Voir l'avancement du projet" },
+    { value: "VIEW_MEMBER_STATS", label: "Voir les statistiques des membres" },
+    { value: "ASSIGN_TASKS", label: "Assigner des tâches" },
+    { value: "CREATE_TASK", label: "Créer des tâches" },
+    { value: "VIEW_MEETINGS", label: "Voir les réunions" },
+    { value: "JOIN_MEETINGS", label: "Rejoindre les réunions" },
+];
+
 type PendingRoleChange = {
     memberUserId: string;
     memberName: string;
     currentRole: "MANAGER" | "VIEWER" | "MEMBER";
-    newRole: "MANAGER" | "VIEWER" | "MEMBER";
+    newRole: "MANAGER" | "MEMBER";
 };
 
 type PendingRemoval = {
@@ -114,6 +129,14 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
     const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
     const [isSubmittingSensitiveAction, setIsSubmittingSensitiveAction] = useState(false);
+
+    const [viewerEmail, setViewerEmail] = useState("");
+    const [viewerPermissions, setViewerPermissions] = useState<ViewerPermission[]>([]);
+    const [isCreatingViewer, setIsCreatingViewer] = useState(false);
+
+    const [editingViewerUserId, setEditingViewerUserId] = useState<string | null>(null);
+    const [editingViewerPermissions, setEditingViewerPermissions] = useState<ViewerPermission[]>([]);
+    const [isUpdatingViewerPermissions, setIsUpdatingViewerPermissions] = useState(false);
 
     const fetchInfos = async (projectId: string) => {
         try {
@@ -199,9 +222,13 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     }, [members, email]);
 
     const currentUserRole: ProjectRole | null = currentMembership?.role ?? null;
+    const currentViewerPermissions = currentMembership?.permissions ?? [];
     const canManageMembers = currentUserRole === "OWNER";
     const canCreateTask =
-        currentUserRole === "OWNER" || currentUserRole === "MANAGER";
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER" ||
+        (currentUserRole === "VIEWER" &&
+            currentViewerPermissions.includes("CREATE_TASK"));
     const canDeleteTask =
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
 
@@ -233,6 +260,18 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         return statusMatch && assignedMatch;
     });
 
+    function toggleViewerPermission(
+        permission: ViewerPermission,
+        selected: ViewerPermission[],
+        setSelected: React.Dispatch<React.SetStateAction<ViewerPermission[]>>
+    ) {
+        if (selected.includes(permission)) {
+            setSelected(selected.filter((p) => p !== permission));
+        } else {
+            setSelected([...selected, permission]);
+        }
+    }
+
     if (isLoading) {
         return (
             <Wrapper>
@@ -256,7 +295,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
     const requestRoleChange = (
         member: ProjectUserMember,
-        newRole: "MANAGER" | "VIEWER" | "MEMBER"
+        newRole: "MANAGER" | "MEMBER"
     ) => {
         if (member.role === newRole) return;
 
@@ -319,6 +358,52 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         }
     };
 
+    const handleCreateViewer = async () => {
+        try {
+            setIsCreatingViewer(true);
+            await createProjectViewer(projectId, viewerEmail, viewerPermissions);
+            setViewerEmail("");
+            setViewerPermissions([]);
+            await fetchMembers(projectId);
+            await fetchActivityLogs(projectId);
+            toast.success("Observateur ajouté avec succès");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsCreatingViewer(false);
+        }
+    };
+
+    const startEditViewerPermissions = (
+        viewerUserId: string,
+        permissions: ViewerPermission[]
+    ) => {
+        setEditingViewerUserId(viewerUserId);
+        setEditingViewerPermissions(permissions);
+    };
+
+    const handleUpdateViewerPermissions = async () => {
+        if (!editingViewerUserId) return;
+
+        try {
+            setIsUpdatingViewerPermissions(true);
+            await updateViewerPermissions(
+                projectId,
+                editingViewerUserId,
+                editingViewerPermissions
+            );
+            setEditingViewerUserId(null);
+            setEditingViewerPermissions([]);
+            await fetchMembers(projectId);
+            await fetchActivityLogs(projectId);
+            toast.success("Permissions mises à jour avec succès");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsUpdatingViewerPermissions(false);
+        }
+    };
+
     const closeRoleChangeModal = () => {
         const modal = document.getElementById("confirm_role_change_modal") as HTMLDialogElement | null;
         modal?.close();
@@ -341,7 +426,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 className={`rounded-lg border p-3 ${isOwner ? "border-primary/40 bg-base-200/60" : "border-base-300"
                     }`}
             >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                         <p className="font-medium break-words">
                             {member.user.name || "Utilisateur"}
@@ -360,7 +445,89 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     </span>
                 </div>
 
-                {canManageMembers && !isOwner && (
+                {member.role === "VIEWER" && (
+                    <div className="mt-3 space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                            {member.permissions?.length ? (
+                                member.permissions.map((permission) => (
+                                    <span key={permission} className="badge badge-outline badge-sm">
+                                        {permission}
+                                    </span>
+                                ))
+                            ) : (
+                                <span className="text-xs opacity-70">Aucune permission</span>
+                            )}
+                        </div>
+
+                        {canManageMembers && (
+                            <>
+                                <button
+                                    className="btn btn-outline btn-xs w-full"
+                                    onClick={() =>
+                                        startEditViewerPermissions(member.userId, member.permissions ?? [])
+                                    }
+                                >
+                                    Modifier permissions
+                                </button>
+
+                                <button
+                                    onClick={() => requestRemoveMember(member)}
+                                    className="btn btn-error btn-outline btn-xs w-full"
+                                >
+                                    Retirer
+                                </button>
+                            </>
+                        )}
+
+                        {editingViewerUserId === member.userId && (
+                            <div className="mt-2 p-3 border border-base-300 rounded-lg">
+                                <div className="grid gap-2 mb-3">
+                                    {VIEWER_PERMISSION_OPTIONS.map((option) => (
+                                        <label
+                                            key={option.value}
+                                            className="label cursor-pointer justify-start gap-3"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="checkbox checkbox-sm"
+                                                checked={editingViewerPermissions.includes(option.value)}
+                                                onChange={() =>
+                                                    toggleViewerPermission(
+                                                        option.value,
+                                                        editingViewerPermissions,
+                                                        setEditingViewerPermissions
+                                                    )
+                                                }
+                                            />
+                                            <span className="label-text">{option.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                    <button
+                                        className="btn btn-primary btn-xs"
+                                        onClick={handleUpdateViewerPermissions}
+                                        disabled={isUpdatingViewerPermissions}
+                                    >
+                                        {isUpdatingViewerPermissions ? "Enregistrement..." : "Enregistrer"}
+                                    </button>
+                                    <button
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => {
+                                            setEditingViewerUserId(null);
+                                            setEditingViewerPermissions([]);
+                                        }}
+                                    >
+                                        Annuler
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {canManageMembers && !isOwner && member.role !== "VIEWER" && (
                     <div className="mt-3 space-y-2">
                         <select
                             className="select select-bordered select-sm w-full"
@@ -368,12 +535,11 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             onChange={(e) =>
                                 requestRoleChange(
                                     member,
-                                    e.target.value as "MANAGER" | "VIEWER" | "MEMBER"
+                                    e.target.value as "MANAGER" | "MEMBER"
                                 )
                             }
                         >
                             <option value="MEMBER">Membre</option>
-                            <option value="VIEWER">Observateur</option>
                             <option value="MANAGER">Manager</option>
                         </select>
 
@@ -423,6 +589,51 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             <p className="text-xs opacity-70 mb-4 leading-6">
                                 Vue en lecture seule des collaborateurs du projet.
                             </p>
+                        )}
+
+                        {canManageMembers && (
+                            <div className="p-4 border border-base-300 rounded-xl mb-4">
+                                <h3 className="font-semibold mb-3">Ajouter un observateur</h3>
+
+                                <input
+                                    type="email"
+                                    className="input input-bordered w-full mb-3"
+                                    placeholder="Email du viewer"
+                                    value={viewerEmail}
+                                    onChange={(e) => setViewerEmail(e.target.value)}
+                                />
+
+                                <div className="grid gap-2 mb-4">
+                                    {VIEWER_PERMISSION_OPTIONS.map((option) => (
+                                        <label
+                                            key={option.value}
+                                            className="label cursor-pointer justify-start gap-3"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="checkbox checkbox-sm"
+                                                checked={viewerPermissions.includes(option.value)}
+                                                onChange={() =>
+                                                    toggleViewerPermission(
+                                                        option.value,
+                                                        viewerPermissions,
+                                                        setViewerPermissions
+                                                    )
+                                                }
+                                            />
+                                            <span className="label-text">{option.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+
+                                <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={handleCreateViewer}
+                                    disabled={isCreatingViewer || !viewerEmail.trim()}
+                                >
+                                    {isCreatingViewer ? "Ajout..." : "Ajouter le viewer"}
+                                </button>
+                            </div>
                         )}
 
                         {membersLoading ? (

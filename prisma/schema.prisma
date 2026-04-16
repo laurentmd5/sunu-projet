@@ -66,11 +66,12 @@ model User {
   name  String
   email String @unique
 
-  tasks        Task[]
-  createdTasks Task[]        @relation("CreatedTasks")
-  projects     Project[]     @relation("UserProjects")
-  userProjects ProjectUser[]
-  activityLogs ActivityLog[] @relation("ActivityActor")
+  tasks         Task[]
+  createdTasks  Task[]        @relation("CreatedTasks")
+  reviewedTasks Task[]        @relation("TaskReviewedBy")
+  projects      Project[]     @relation("UserProjects")
+  userProjects  ProjectUser[]
+  activityLogs  ActivityLog[] @relation("ActivityActor")
 
   createdTeams           Team[]             @relation("CreatedTeams")
   ledTeams               Team[]             @relation("TeamLead")
@@ -171,6 +172,10 @@ model Task {
   milestoneId String?      @db.VarChar(36)
   teamId      String?      @db.VarChar(36)
 
+  reviewFeedback String?   @db.Text
+  reviewedById   String?   @db.VarChar(36)
+  reviewedAt     DateTime?
+
   projectId   String  @db.VarChar(36)
   userId      String? @db.VarChar(36)
   createdById String  @db.VarChar(36)
@@ -179,15 +184,17 @@ model Task {
   user      User?   @relation(fields: [userId], references: [id])
   createdBy User    @relation("CreatedTasks", fields: [createdById], references: [id])
 
-  milestone Milestone?    @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
-  team      Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  comments  TaskComment[]
+  milestone  Milestone?    @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  team       Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  comments   TaskComment[]
+  reviewedBy User?         @relation("TaskReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([userId])
   @@index([milestoneId])
   @@index([teamId])
   @@index([priority])
+  @@index([reviewedById])
 }
 
 model ProjectUser {

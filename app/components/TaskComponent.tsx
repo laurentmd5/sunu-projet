@@ -63,7 +63,12 @@ const TaskComponent: FC<TaskProps> = ({ task, index, canDelete = false, onDelete
 
                     {task.team && (
                         <span className="text-xs opacity-70 mt-1">
-                            Équipe: {task.team.name}
+                            Équipe responsable : {task.team.name}
+                        </span>
+                    )}
+                    {!task.user && task.team && (
+                        <span className="text-xs opacity-60 mt-1">
+                            Aucun exécutant défini
                         </span>
                     )}
 

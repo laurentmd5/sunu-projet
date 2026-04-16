@@ -1,9 +1,9 @@
 "use client";
 
-import { createTask, getProjectInfo, getProjectMembersWithRoles, getProjectUsers, getProjectTeams } from '@/app/actions';
+import { createTask, getProjectInfo, getProjectMembersWithRoles, getProjectUsers, getProjectTeams, getProjectMilestones, createMilestone } from '@/app/actions';
 import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper';
-import { Project, ProjectRole, ProjectUserMember, TaskPriority, ProjectTeamNode } from '@/type';
+import { Project, ProjectRole, ProjectUserMember, TaskPriority, ProjectTeamNode, Milestone } from '@/type';
 import { ViewerPermission } from '@/lib/permissions-core';
 import { useAuthUser } from "@/lib/auth-client";
 import Link from 'next/link';
@@ -47,7 +47,13 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
     const [tagsInput, setTagsInput] = useState("");
     const [selectedTeamId, setSelectedTeamId] = useState("");
+    const [selectedMilestoneId, setSelectedMilestoneId] = useState("");
     const [availableTeams, setAvailableTeams] = useState<ProjectTeamNode[]>([]);
+    const [availableMilestones, setAvailableMilestones] = useState<Milestone[]>([]);
+    const [newMilestoneName, setNewMilestoneName] = useState("");
+    const [newMilestoneDescription, setNewMilestoneDescription] = useState("");
+    const [newMilestoneTargetDate, setNewMilestoneTargetDate] = useState("");
+    const [isCreatingMilestone, setIsCreatingMilestone] = useState(false);
     const router = useRouter();
 
     const fetchInfos = async (projectId: string) => {
@@ -63,6 +69,9 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
             const teamsResult = await getProjectTeams(projectId);
             setAvailableTeams(teamsResult.teamsTree);
+
+            const milestones = await getProjectMilestones(projectId);
+            setAvailableMilestones(milestones as Milestone[]);
         } catch (error) {
             console.error(`Erreur lors du chargement du projet :`, error);
         }
@@ -123,6 +132,39 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         setSelectedUser(user);
     };
 
+    const handleCreateMilestone = async (): Promise<boolean> => {
+        if (!projectId) return false;
+
+        try {
+            setIsCreatingMilestone(true);
+
+            const milestone = await createMilestone({
+                projectId,
+                name: newMilestoneName,
+                description: newMilestoneDescription,
+                targetDate: newMilestoneTargetDate
+                    ? new Date(`${newMilestoneTargetDate}T00:00:00`)
+                    : null,
+            });
+
+            const milestones = await getProjectMilestones(projectId);
+            setAvailableMilestones(milestones as Milestone[]);
+            setSelectedMilestoneId(milestone.id);
+
+            setNewMilestoneName("");
+            setNewMilestoneDescription("");
+            setNewMilestoneTargetDate("");
+
+            toast.success("Jalon créé avec succès.");
+            return true;
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+            return false;
+        } finally {
+            setIsCreatingMilestone(false);
+        }
+    };
+
     const handleSubmit = async () => {
         if (!canCreateTask) {
             toast.error("Vous n'avez pas les droits pour créer une tâche dans ce projet.");
@@ -135,7 +177,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         }
 
         if (selectedUser && !canAssignTasks) {
-            toast.error("Vous pouvez créer une tâche, mais pas l'assigner.");
+            toast.error("Vous pouvez créer une tâche, mais pas définir d'exécutant.");
             return;
         }
 
@@ -155,7 +197,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 priority,
                 tags: parsedTags,
                 teamId: selectedTeamId || null,
-                milestoneId: null,
+                milestoneId: selectedMilestoneId || null,
             });
             router.push(`/project/${projectId}`);
         } catch (error) {
@@ -186,18 +228,26 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 {canCreateTask && !canAssignTasks && (
                     <div className="alert alert-info mt-4">
                         <span>
-                            Vous pouvez créer une tâche, mais pas l'assigner à un collaborateur.
+                            Vous pouvez créer une tâche, mais pas définir d'exécutant.
                         </span>
                     </div>
                 )}
                 <div className='flex flex-col md:flex-row md:justify-between'>
                     <div className='md:w-1/4'>
+                        <div className="flex flex-col gap-2 mb-3">
+                            <span className="badge w-24 mr-2">
+                                Exécutant
+                            </span>
+                            <p className="text-xs opacity-70">
+                                L'exécutant correspond à la personne qui réalise actuellement la tâche.
+                            </p>
+                        </div>
                         {canAssignTasks ? (
                             <AssignTask users={assignableUsers} projectId={projectId} onAssignTask={handleUserSelect} />
                         ) : (
                             <div className="rounded-2xl border border-base-300 p-4">
                                 <p className="text-sm opacity-70">
-                                    Aucune assignation. Vous pouvez créer la tâche sans l'assigner.
+                                    Aucun exécutant sélectionné. Vous pouvez créer la tâche sans définir d'exécutant pour le moment.
                                 </p>
                             </div>
                         )}
@@ -264,9 +314,60 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                         ))}
                                     </select>
                                     <p className="text-xs opacity-70 mt-1">
-                                        Cette équipe sera marquée responsable de la tâche.
+                                        Cette équipe porte la responsabilité métier de la tâche. L'exécutant peut être défini séparément.
                                     </p>
                                 </div>
+                                <div className='flex flex-col gap-2 mt-4'>
+                                    <span className='badge w-20 mr-2'>
+                                        Jalon
+                                    </span>
+                                    <select
+                                        className='select select-bordered border border-base-300'
+                                        value={selectedMilestoneId}
+                                        onChange={(e) => setSelectedMilestoneId(e.target.value)}
+                                        disabled={!canCreateTask}
+                                    >
+                                        <option value="">Aucun jalon</option>
+                                        {availableMilestones.map((milestone) => (
+                                            <option key={milestone.id} value={milestone.id}>
+                                                {milestone.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs opacity-70 mt-1">
+                                        Le jalon permet de rattacher la tâche à une étape structurante du projet.
+                                    </p>
+                                    <div className="flex justify-end mt-2">
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline btn-sm"
+                                            onClick={() => {
+                                                const modal = document.getElementById("create_milestone_modal") as HTMLDialogElement | null;
+                                                modal?.showModal();
+                                            }}
+                                            disabled={!canCreateTask}
+                                        >
+                                            Créer un jalon
+                                        </button>
+                                    </div>
+                                </div>
+                                {(selectedUser || selectedTeamId || selectedMilestoneId) && (
+                                    <div className="rounded-xl border border-base-300 p-3 mt-4 text-sm">
+                                        <div className="font-semibold mb-2">Responsabilité actuelle</div>
+                                        <div className="space-y-1">
+                                            <div>
+                                                <span className="opacity-70">Exécutant :</span>{" "}
+                                                {selectedUser ? (selectedUser.name || selectedUser.email) : "Aucun"}
+                                            </div>
+                                            <div>
+                                                <span className="opacity-70">Équipe responsable :</span>{" "}
+                                                {selectedTeamId
+                                                    ? availableTeams.find((team) => team.id === selectedTeamId)?.name || "Équipe inconnue"
+                                                    : "Aucune"}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
@@ -302,6 +403,72 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     </div>
                 </div>
             </div>
+
+            <dialog id="create_milestone_modal" className="modal">
+                <div className="modal-box">
+                    <form method="dialog">
+                        <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+                    </form>
+
+                    <h3 className="font-bold text-lg mb-4">Créer un jalon</h3>
+
+                    <div className="flex flex-col gap-4">
+                        <div>
+                            <label className="label">
+                                <span className="label-text">Nom</span>
+                            </label>
+                            <input
+                                className="input input-bordered w-full"
+                                value={newMilestoneName}
+                                onChange={(e) => setNewMilestoneName(e.target.value)}
+                                placeholder="Nom du jalon"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="label">
+                                <span className="label-text">Description</span>
+                            </label>
+                            <textarea
+                                className="textarea textarea-bordered w-full"
+                                value={newMilestoneDescription}
+                                onChange={(e) => setNewMilestoneDescription(e.target.value)}
+                                placeholder="Description du jalon"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="label">
+                                <span className="label-text">Date cible</span>
+                            </label>
+                            <input
+                                type="date"
+                                className="input input-bordered w-full"
+                                value={newMilestoneTargetDate}
+                                min={new Date().toISOString().split("T")[0]}
+                                onChange={(e) => setNewMilestoneTargetDate(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={async () => {
+                                    const ok = await handleCreateMilestone();
+                                    if (ok) {
+                                        const modal = document.getElementById("create_milestone_modal") as HTMLDialogElement | null;
+                                        modal?.close();
+                                    }
+                                }}
+                                disabled={isCreatingMilestone || !newMilestoneName.trim()}
+                            >
+                                {isCreatingMilestone ? "Création..." : "Créer"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </dialog>
         </Wrapper>
     )
 }

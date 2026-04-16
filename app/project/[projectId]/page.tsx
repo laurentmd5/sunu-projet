@@ -325,7 +325,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         }
     };
 
-    const handleCreateViewer = async () => {
+    const handleCreateViewer = async (): Promise<boolean> => {
         try {
             setIsCreatingViewer(true);
             await createProjectViewer(projectId, viewerEmail, viewerPermissions);
@@ -336,8 +336,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             setMembersLoaded(true);
             setActivityLoaded(true);
             toast.success("Observateur ajouté avec succès");
+            return true;
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+            return false;
         } finally {
             setIsCreatingViewer(false);
         }

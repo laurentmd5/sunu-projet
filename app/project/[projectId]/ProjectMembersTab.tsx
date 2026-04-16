@@ -76,7 +76,7 @@ type Props = {
     viewerPermissions: ViewerPermission[];
     setViewerPermissions: React.Dispatch<React.SetStateAction<ViewerPermission[]>>;
     isCreatingViewer: boolean;
-    handleCreateViewer: () => void;
+    handleCreateViewer: () => Promise<boolean>;
     editingViewerUserId: string | null;
     editingViewerPermissions: ViewerPermission[];
     setEditingViewerUserId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -283,47 +283,16 @@ export default function ProjectMembersTab(props: Props) {
                 </p>
             )}
 
-            {canManageMembers && (
-                <div className="p-4 border border-base-300 rounded-xl mb-4">
-                    <h3 className="font-semibold mb-3">Ajouter un observateur</h3>
-
-                    <input
-                        type="email"
-                        className="input input-bordered w-full mb-3"
-                        placeholder="Email du viewer"
-                        value={viewerEmail}
-                        onChange={(e) => setViewerEmail(e.target.value)}
-                    />
-
-                    <div className="grid gap-2 mb-4">
-                        {VIEWER_PERMISSION_OPTIONS.map((option) => (
-                            <label
-                                key={option.value}
-                                className="label cursor-pointer justify-start gap-3"
-                            >
-                                <input
-                                    type="checkbox"
-                                    className="checkbox checkbox-sm"
-                                    checked={viewerPermissions.includes(option.value)}
-                                    onChange={() =>
-                                        toggleViewerPermission(
-                                            option.value,
-                                            viewerPermissions,
-                                            setViewerPermissions
-                                        )
-                                    }
-                                />
-                                <span className="label-text">{option.label}</span>
-                            </label>
-                        ))}
-                    </div>
-
+            {currentUserRole === "OWNER" && (
+                <div className="flex justify-end mb-4">
                     <button
                         className="btn btn-primary btn-sm"
-                        onClick={handleCreateViewer}
-                        disabled={isCreatingViewer || !viewerEmail.trim()}
+                        onClick={() => {
+                            const modal = document.getElementById("add_viewer_modal") as HTMLDialogElement | null;
+                            modal?.showModal();
+                        }}
                     >
-                        {isCreatingViewer ? "Ajout..." : "Ajouter le viewer"}
+                        Ajouter un observateur
                     </button>
                 </div>
             )}
@@ -360,6 +329,62 @@ export default function ProjectMembersTab(props: Props) {
             ) : (
                 <p className="text-sm opacity-70">Aucun membre trouvé.</p>
             )}
+
+            <dialog id="add_viewer_modal" className="modal">
+                <div className="modal-box">
+                    <form method="dialog">
+                        <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+                    </form>
+
+                    <h3 className="font-bold text-lg mb-4">Ajouter un observateur</h3>
+
+                    <input
+                        type="email"
+                        className="input input-bordered w-full mb-3"
+                        placeholder="Email du viewer"
+                        value={viewerEmail}
+                        onChange={(e) => setViewerEmail(e.target.value)}
+                    />
+
+                    <div className="grid gap-2 mb-4">
+                        {VIEWER_PERMISSION_OPTIONS.map((option) => (
+                            <label
+                                key={option.value}
+                                className="label cursor-pointer justify-start gap-3"
+                            >
+                                <input
+                                    type="checkbox"
+                                    className="checkbox checkbox-sm"
+                                    checked={viewerPermissions.includes(option.value)}
+                                    onChange={() =>
+                                        toggleViewerPermission(
+                                            option.value,
+                                            viewerPermissions,
+                                            setViewerPermissions
+                                        )
+                                    }
+                                />
+                                <span className="label-text">{option.label}</span>
+                            </label>
+                        ))}
+                    </div>
+
+                    <button
+                        className="btn btn-primary"
+                        onClick={async (e) => {
+                            e.preventDefault();
+                            const ok = await handleCreateViewer();
+                            if (ok) {
+                                const modal = document.getElementById("add_viewer_modal") as HTMLDialogElement | null;
+                                modal?.close();
+                            }
+                        }}
+                        disabled={isCreatingViewer || !viewerEmail.trim()}
+                    >
+                        {isCreatingViewer ? "Ajout..." : "Ajouter le viewer"}
+                    </button>
+                </div>
+            </dialog>
         </div>
     );
 }

@@ -18,7 +18,9 @@ export type TaskStatus =
     | "IN_REVIEW"
     | "DONE"
     | "CANCELLED";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type ProjectCollaboratorScope = "INTERNAL" | "EXTERNAL";
+export type MilestoneStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "DELAYED";
 
 export type ProjectUserMember = {
     id: string;
@@ -90,6 +92,31 @@ export type CreateTeamInput = {
     leadUserId?: string | null;
 };
 
+export type Milestone = {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  targetDate: Date | string | null;
+  status: MilestoneStatus;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
+
+export type TaskComment = {
+  id: string;
+  taskId: string;
+  authorId: string;
+  body: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  author?: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+};
+
 export type Team = PrismaTeam & {
     createdBy?: User;
     members?: TeamMember[];
@@ -146,9 +173,18 @@ export type Project = PrismaProject & {
     meetings?: TeamMeeting[];
 };
 
-export type Task = PrismaTask & {
+export type Task = Omit<PrismaTask, "tags"> & {
     user?: User | null;
     createdBy?: User | null;
+    team?: Team | null;
+    milestone?: Milestone | null;
+    comments?: TaskComment[];
+    tags?: string[] | null;
+    reviewedBy?: {
+        id: string;
+        name: string | null;
+        email: string;
+    } | null;
 };
 
 export type MeetingRecording = PrismaMeetingRecording & {

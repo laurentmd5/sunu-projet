@@ -1,6 +1,25 @@
 import { z } from "zod";
 import { TASK_STATUS_VALUES } from "@/lib/task-status";
 
+export const TASK_PRIORITY_VALUES = [
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "CRITICAL",
+] as const;
+
+export const taskPrioritySchema = z.enum(TASK_PRIORITY_VALUES);
+
+export const taskTagsSchema = z
+  .array(
+    z.string()
+      .trim()
+      .min(1, "Tag invalide.")
+      .max(50, "Tag trop long.")
+  )
+  .max(10, "Trop de tags.")
+  .default([]);
+
 export const createProjectSchema = z.object({
     name: z
         .string()
@@ -54,6 +73,20 @@ export const createTaskSchema = z.object({
         .email("Email d'assignation invalide.")
         .nullable()
         .optional(),
+    priority: taskPrioritySchema.default("MEDIUM"),
+    tags: taskTagsSchema.optional(),
+    teamId: z
+        .string()
+        .trim()
+        .min(1, "Équipe invalide.")
+        .nullable()
+        .optional(),
+    milestoneId: z
+        .string()
+        .trim()
+        .min(1, "Jalon invalide.")
+        .nullable()
+        .optional(),
 });
 
 export const updateTaskStatusSchema = z.object({
@@ -71,6 +104,34 @@ export const updateTaskStatusSchema = z.object({
         .string()
         .trim()
         .max(2000, "La description de solution est trop longue.")
+        .optional(),
+});
+
+export const updateTaskManagementSchema = z.object({
+    taskId: z
+        .string()
+        .trim()
+        .min(1, "L'ID de la tâche est requis"),
+    assignToEmail: z
+        .string()
+        .trim()
+        .email("Email invalide")
+        .nullable()
+        .optional(),
+    dueDate: z.date().nullable().optional(),
+    priority: taskPrioritySchema.optional(),
+    tags: taskTagsSchema.optional(),
+    teamId: z
+        .string()
+        .trim()
+        .min(1, "Équipe invalide.")
+        .nullable()
+        .optional(),
+    milestoneId: z
+        .string()
+        .trim()
+        .min(1, "Jalon invalide.")
+        .nullable()
         .optional(),
 });
 
@@ -162,4 +223,16 @@ export const addTeamMemberSchema = z.object({
         .string()
         .trim()
         .min(1, "Utilisateur invalide."),
+});
+
+export const sendTaskToReviewSchema = z.object({
+    taskId: z
+        .string()
+        .trim()
+        .min(1, "Tâche invalide."),
+    reviewFeedback: z
+        .string()
+        .trim()
+        .min(3, "Expliquez ce qui ne va pas.")
+        .max(2000, "Le retour de revue est trop long."),
 });

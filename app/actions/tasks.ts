@@ -12,7 +12,73 @@ import {
     updateTaskStatusSchema,
     updateTaskManagementSchema,
     sendTaskToReviewSchema,
+    addTaskCommentSchema,
 } from "@/lib/validations";
+
+async function assertUserAssignableWithinResponsibleTeam(
+    projectId: string,
+    userId: string,
+    rootTeamId: string
+) {
+    const rootTeam = await prisma.team.findUnique({
+        where: { id: rootTeamId },
+        select: {
+            id: true,
+            projectId: true,
+            parentId: true,
+            children: {
+                select: {
+                    id: true,
+                },
+            },
+        },
+    });
+
+    if (!rootTeam) {
+        throw new ActionError("Équipe responsable introuvable.", 404);
+    }
+
+    if (rootTeam.projectId !== projectId) {
+        throw new ActionError(
+            "L'équipe responsable n'appartient pas à ce projet.",
+            400
+        );
+    }
+
+    if (rootTeam.parentId !== null) {
+        throw new ActionError(
+            "Seules les équipes racines peuvent être responsables d'une tâche.",
+            400
+        );
+    }
+
+    const allowedTeamIds = [rootTeam.id, ...rootTeam.children.map((child) => child.id)];
+
+    const membership = await prisma.teamMember.findFirst({
+        where: {
+            userId,
+            teamId: {
+                in: allowedTeamIds,
+            },
+        },
+        select: {
+            teamId: true,
+        },
+    });
+
+    if (!membership) {
+        throw new ActionError(
+            "L'utilisateur assigné doit appartenir à l'équipe responsable ou à l'une de ses sous-équipes.",
+            400
+        );
+    }
+
+    return {
+        rootTeam,
+        allowedTeamIds,
+        membership,
+    };
+}
 
 export async function createTask(input: {
     name: string;
@@ -108,6 +174,14 @@ export async function createTask(input: {
         }
 
         validatedMilestoneId = milestone.id;
+    }
+
+    if (validatedTeamId && assignedUserId) {
+        await assertUserAssignableWithinResponsibleTeam(
+            parsed.projectId,
+            assignedUserId,
+            validatedTeamId
+        );
     }
 
     const newTask = await prisma.task.create({
@@ -218,6 +292,20 @@ export const getTaskDetails = async (taskId: string) => {
                     id: true,
                     name: true,
                     email: true,
+                },
+            },
+            comments: {
+                include: {
+                    author: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                        },
+                    },
+                },
+                orderBy: {
+                    createdAt: "asc",
                 },
             },
         },
@@ -445,6 +533,20 @@ export async function updateTaskManagement(input: {
         }
     }
 
+    const effectiveUserId =
+        nextUserId !== undefined ? nextUserId : task.userId;
+
+    const effectiveTeamId =
+        nextTeamId !== undefined ? nextTeamId : task.teamId;
+
+    if (effectiveTeamId && effectiveUserId) {
+        await assertUserAssignableWithinResponsibleTeam(
+            task.projectId,
+            effectiveUserId,
+            effectiveTeamId
+        );
+    }
+
     const updatedTask = await prisma.task.update({
         where: { id: parsed.taskId },
         data: {
@@ -592,3 +694,65 @@ export const updateTaskStatus = async (
 
     return { success: true, message: "Statut mis à jour avec succès." };
 };
+
+export async function addTaskComment(input: {
+    taskId: string;
+    body: string;
+}) {
+    const parsed = addTaskCommentSchema.parse(input);
+
+    const { user, task } = await assertTaskAccess(parsed.taskId);
+
+    const membership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId: user.id,
+                projectId: task.projectId,
+            },
+        },
+        select: {
+            role: true,
+        },
+    });
+
+    if (membership?.role === "VIEWER") {
+        throw new ActionError(
+            "Un observateur ne peut pas commenter cette tâche.",
+            403
+        );
+    }
+
+    const comment = await prisma.taskComment.create({
+        data: {
+            taskId: parsed.taskId,
+            authorId: user.id,
+            body: parsed.body.trim(),
+        },
+        include: {
+            author: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+    });
+
+    await createActivityLog({
+        projectId: task.projectId,
+        actorUserId: user.id,
+        type: "TASK_COMMENT_ADDED",
+        message: `${user.name} a ajouté un commentaire sur la tâche "${task.name}".`,
+        metadata: {
+            taskId: task.id,
+            commentId: comment.id,
+        },
+    });
+
+    return {
+        success: true,
+        message: "Commentaire ajouté avec succès.",
+        comment,
+    };
+}

@@ -61,7 +61,14 @@ export {
     updateTaskManagement,
     updateTaskStatus,
     sendTaskToReview,
+    addTaskComment,
 } from "./tasks";
+
+// Milestones
+export {
+    createMilestone,
+    getProjectMilestones,
+} from "./milestones";
 
 // Activity
 export {

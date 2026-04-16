@@ -236,3 +236,41 @@ export const sendTaskToReviewSchema = z.object({
         .min(3, "Expliquez ce qui ne va pas.")
         .max(2000, "Le retour de revue est trop long."),
 });
+
+export const addTaskCommentSchema = z.object({
+    taskId: z
+        .string()
+        .trim()
+        .min(1, "Tâche invalide."),
+    body: z
+        .string()
+        .trim()
+        .min(1, "Le commentaire ne peut pas être vide.")
+        .max(4000, "Le commentaire est trop long."),
+});
+
+export const createMilestoneSchema = z.object({
+    projectId: z
+        .string()
+        .trim()
+        .min(1, "Projet invalide."),
+    name: z
+        .string()
+        .trim()
+        .min(2, "Le nom du jalon doit contenir au moins 2 caractères.")
+        .max(100, "Le nom du jalon est trop long."),
+    description: z
+        .string()
+        .trim()
+        .max(2000, "La description du jalon est trop longue.")
+        .optional()
+        .or(z.literal("")),
+    targetDate: z.date().nullable().optional(),
+});
+
+export const getProjectMilestonesSchema = z.object({
+    projectId: z
+        .string()
+        .trim()
+        .min(1, "Projet invalide."),
+});

@@ -2,11 +2,12 @@
 
 import prisma from "@/lib/prisma";
 import { assertProjectCapability } from "@/lib/project-capabilities";
+import { ActivityType } from "@prisma/client";
 
 interface CreateActivityLogParams {
     projectId: string;
     actorUserId: string;
-    type: "PROJECT_CREATED" | "MEMBER_JOINED" | "MEMBER_ROLE_UPDATED" | "MEMBER_REMOVED" | "TASK_CREATED" | "TASK_STATUS_UPDATED" | "VIEWER_INVITED" | "VIEWER_PERMISSIONS_UPDATED";
+    type: ActivityType;
     message: string;
     metadata?: Record<string, any>;
 }

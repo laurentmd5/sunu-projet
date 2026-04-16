@@ -8,6 +8,7 @@ interface CreateActivityLogParams {
     actorUserId: string;
     type: "PROJECT_CREATED" | "MEMBER_JOINED" | "MEMBER_ROLE_UPDATED" | "MEMBER_REMOVED" | "TASK_CREATED" | "TASK_STATUS_UPDATED" | "VIEWER_INVITED" | "VIEWER_PERMISSIONS_UPDATED";
     message: string;
+    metadata?: Record<string, any>;
 }
 
 export async function createActivityLog(params: CreateActivityLogParams) {
@@ -18,6 +19,7 @@ export async function createActivityLog(params: CreateActivityLogParams) {
                 actorUserId: params.actorUserId,
                 type: params.type,
                 message: params.message,
+                metadata: params.metadata,
             },
         });
     } catch (error) {

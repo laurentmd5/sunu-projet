@@ -60,6 +60,7 @@ export {
     getTaskDetails,
     updateTaskManagement,
     updateTaskStatus,
+    sendTaskToReview,
 } from "./tasks";
 
 // Activity

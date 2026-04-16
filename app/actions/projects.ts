@@ -10,6 +10,7 @@ import {
 } from "@/lib/permissions";
 import { canAdminProject } from "@/lib/project-roles";
 import { createActivityLog } from "./activity";
+import { normalizeTaskTags } from "@/lib/task-tags";
 
 const createProjectSchema = z.object({
     name: z.string().min(1, "Le nom du projet est requis"),
@@ -109,6 +110,10 @@ export async function getProjectsCreatedByUSer() {
 
         return projects.map((project) => ({
             ...project,
+            tasks: project.tasks.map((task) => ({
+                ...task,
+                tags: normalizeTaskTags(task.tags),
+            })),
             users: project.users.map(
                 (userEntry: { user: { id: string; name: string; email: string } }) =>
                     userEntry.user
@@ -238,6 +243,10 @@ export async function getProjectsAssociatedWithUser() {
 
         return projects.map((project) => ({
             ...project,
+            tasks: project.tasks.map((task) => ({
+                ...task,
+                tags: normalizeTaskTags(task.tags),
+            })),
             users: project.users.map(
                 (userEntry: { user: { id: string; name: string; email: string } }) =>
                     userEntry.user

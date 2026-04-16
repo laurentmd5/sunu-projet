@@ -1,54 +1,31 @@
 "use server";
 
-import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { assertProjectMember, assertTaskAccess, ActionError, assertCanCreateTask, assertCanAssignTasks } from "@/lib/permissions";
+import { Prisma } from "@prisma/client";
+import { assertTaskAccess, ActionError, assertCanCreateTask, assertCanAssignTasks } from "@/lib/permissions";
 import { sendTaskAssignmentEmail } from "@/lib/email";
 import { TASK_STATUSES } from "@/lib/task-status";
 import { createActivityLog } from "./activity";
+import { normalizeTaskTags } from "@/lib/task-tags";
+import {
+    createTaskSchema,
+    updateTaskStatusSchema,
+    updateTaskManagementSchema,
+    sendTaskToReviewSchema,
+} from "@/lib/validations";
 
-const createTaskSchema = z.object({
-    name: z.string().min(1, "Le nom de la tâche est requis"),
-    description: z.string().optional(),
-    dueDate: z.date().nullable().optional(),
-    projectId: z.string().min(1, "L'ID du projet est requis"),
-    assignToEmail: z.string().trim().email("Email invalide").nullable().optional(),
-});
-
-const taskStatusSchema = z.enum([
-    "TODO",
-    "IN_PROGRESS",
-    "IN_REVIEW",
-    "DONE",
-    "CANCELLED",
-]);
-
-const updateTaskStatusSchema = z.object({
-    taskId: z.string().min(1, "L'ID de la tâche est requis"),
-    newStatus: taskStatusSchema,
-    solutionDescription: z.string().optional(),
-});
-
-const updateTaskManagementSchema = z.object({
-    taskId: z.string().min(1, "L'ID de la tâche est requis"),
-    assignToEmail: z.string().trim().email("Email invalide").nullable().optional(),
-    dueDate: z.date().nullable().optional(),
-});
-
-export async function createTask(
-    name: string,
-    description: string,
-    dueDate: Date | null,
-    projectId: string,
-    assignToEmail: string | null
-) {
-    const parsed = createTaskSchema.parse({
-        name,
-        description,
-        dueDate,
-        projectId,
-        assignToEmail,
-    });
+export async function createTask(input: {
+    name: string;
+    description: string;
+    dueDate: Date | null;
+    projectId: string;
+    assignToEmail?: string | null;
+    priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    tags?: string[];
+    teamId?: string | null;
+    milestoneId?: string | null;
+}) {
+    const parsed = createTaskSchema.parse(input);
 
     if (parsed.dueDate && parsed.dueDate < new Date(new Date().setHours(0, 0, 0, 0))) {
         throw new ActionError("La date d'échéance ne peut pas être dans le passé.", 400);
@@ -88,6 +65,51 @@ export async function createTask(
         assignedUserName = assignedMembership.user.name;
     }
 
+    // Normaliser les tags
+    const normalizedTags = [...new Set((parsed.tags ?? [])
+        .map(tag => tag.trim())
+        .filter(Boolean))];
+
+    // Valider teamId si fourni
+    let validatedTeamId: string | null = null;
+    if (parsed.teamId) {
+        const team = await prisma.team.findUnique({
+            where: { id: parsed.teamId },
+        });
+
+        if (!team) {
+            throw new ActionError("Équipe introuvable.", 404);
+        }
+
+        if (team.projectId !== parsed.projectId) {
+            throw new ActionError("L'équipe n'appartient pas à ce projet.", 400);
+        }
+
+        if (team.parentId !== null) {
+            throw new ActionError("Seules les équipes racines peuvent être responsables d'une tâche.", 400);
+        }
+
+        validatedTeamId = team.id;
+    }
+
+    // Valider milestoneId si fourni
+    let validatedMilestoneId: string | null = null;
+    if (parsed.milestoneId) {
+        const milestone = await prisma.milestone.findUnique({
+            where: { id: parsed.milestoneId },
+        });
+
+        if (!milestone) {
+            throw new ActionError("Jalon introuvable.", 404);
+        }
+
+        if (milestone.projectId !== parsed.projectId) {
+            throw new ActionError("Le jalon n'appartient pas à ce projet.", 400);
+        }
+
+        validatedMilestoneId = milestone.id;
+    }
+
     const newTask = await prisma.task.create({
         data: {
             name: parsed.name,
@@ -96,6 +118,10 @@ export async function createTask(
             projectId: parsed.projectId,
             createdById: user.id,
             userId: assignedUserId,
+            priority: parsed.priority,
+            tags: normalizedTags.length > 0 ? normalizedTags : Prisma.JsonNull,
+            teamId: validatedTeamId,
+            milestoneId: validatedMilestoneId,
         },
     });
 
@@ -133,8 +159,16 @@ export async function createTask(
         actorUserId: user.id,
         type: "TASK_CREATED",
         message: assignedUserName && assignedUserId !== user.id
-            ? `${user.name} a créé la tâche "${newTask.name}" et l'a assignée à ${assignedUserName}.` 
+            ? `${user.name} a créé la tâche "${newTask.name}" et l'a assignée à ${assignedUserName}.`
             : `${user.name} a créé la tâche "${newTask.name}".`,
+        metadata: {
+            taskId: newTask.id,
+            assignedUserId,
+            teamId: validatedTeamId,
+            milestoneId: validatedMilestoneId,
+            priority: parsed.priority,
+            tags: normalizedTags,
+        },
     });
 
     return newTask;
@@ -177,6 +211,15 @@ export const getTaskDetails = async (taskId: string) => {
             project: true,
             user: true,
             createdBy: true,
+            team: true,
+            milestone: true,
+            reviewedBy: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
         },
     });
 
@@ -184,19 +227,105 @@ export const getTaskDetails = async (taskId: string) => {
         throw new ActionError("Tâche non trouvée.", 404);
     }
 
-    return task;
+    // Normaliser tags pour renvoyer string[] | null au lieu de JsonValue
+    return {
+        ...task,
+        tags: normalizeTaskTags(task.tags),
+    };
 };
 
-export async function updateTaskManagement(
-    taskId: string,
-    assignToEmail: string | null,
-    dueDate: Date | null
-) {
-    const parsed = updateTaskManagementSchema.parse({
-        taskId,
-        assignToEmail,
-        dueDate,
+export async function sendTaskToReview(input: {
+    taskId: string;
+    reviewFeedback: string;
+}) {
+    const parsed = sendTaskToReviewSchema.parse(input);
+
+    const { user, task } = await assertTaskAccess(parsed.taskId);
+
+    const membership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId: user.id,
+                projectId: task.projectId,
+            },
+        },
+        select: {
+            role: true,
+        },
     });
+
+    const taskWithTeam = await prisma.task.findUnique({
+        where: { id: parsed.taskId },
+        include: {
+            project: true,
+            team: true,
+        },
+    });
+
+    if (!taskWithTeam) {
+        throw new ActionError("Tâche introuvable.", 404);
+    }
+
+    if (taskWithTeam.status !== TASK_STATUSES.DONE) {
+        throw new ActionError(
+            "Seules les tâches terminées peuvent être renvoyées en revue.",
+            400
+        );
+    }
+
+    const isProjectOwner = taskWithTeam.project.createdById === user.id;
+    const isManager = membership?.role === "MANAGER";
+    const isTeamLead =
+        !!taskWithTeam.team && taskWithTeam.team.leadUserId === user.id;
+
+    if (!isProjectOwner && !isManager && !isTeamLead) {
+        throw new ActionError(
+            "Vous n'êtes pas autorisé à renvoyer cette tâche en revue.",
+            403
+        );
+    }
+
+    const updatedTask = await prisma.task.update({
+        where: { id: parsed.taskId },
+        data: {
+            status: TASK_STATUSES.IN_REVIEW,
+            reviewFeedback: parsed.reviewFeedback,
+            reviewedById: user.id,
+            reviewedAt: new Date(),
+        },
+    });
+
+    await createActivityLog({
+        projectId: taskWithTeam.projectId,
+        actorUserId: user.id,
+        type: "TASK_STATUS_UPDATED",
+        message: `${user.name} a renvoyé la tâche "${taskWithTeam.name}" en revue.`,
+        metadata: {
+            taskId: taskWithTeam.id,
+            previousStatus: taskWithTeam.status,
+            newStatus: TASK_STATUSES.IN_REVIEW,
+            reviewFeedback: parsed.reviewFeedback,
+            reviewedById: user.id,
+        },
+    });
+
+    return {
+        success: true,
+        message: "La tâche a été mise en revue avec succès.",
+        task: updatedTask,
+    };
+}
+
+export async function updateTaskManagement(input: {
+    taskId: string;
+    assignToEmail?: string | null;
+    dueDate?: Date | null;
+    priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    tags?: string[];
+    teamId?: string | null;
+    milestoneId?: string | null;
+}) {
+    const parsed = updateTaskManagementSchema.parse(input);
 
     const { user, task } = await assertTaskAccess(parsed.taskId);
 
@@ -218,7 +347,7 @@ export async function updateTaskManagement(
 
     if (!canManageTask) {
         throw new ActionError(
-            "Seuls le propriétaire du projet ou un manager peuvent modifier l'assignation ou l'échéance.",
+            "Seuls le propriétaire du projet ou un manager peuvent modifier la gestion de la tâche.",
             403
         );
     }
@@ -227,49 +356,124 @@ export async function updateTaskManagement(
         throw new ActionError("La date d'échéance ne peut pas être dans le passé.", 400);
     }
 
-    let assignedUserId: string | null = null;
+    let nextUserId: string | null | undefined = undefined;
     let assignedUserName: string | null = null;
 
-    if (parsed.assignToEmail) {
-        const assignedMembership = await prisma.projectUser.findFirst({
-            where: {
-                projectId: task.projectId,
-                user: {
-                    email: parsed.assignToEmail,
+    if (parsed.assignToEmail !== undefined) {
+        if (parsed.assignToEmail === null) {
+            nextUserId = null;
+        } else {
+            const assignedMembership = await prisma.projectUser.findFirst({
+                where: {
+                    projectId: task.projectId,
+                    user: {
+                        email: parsed.assignToEmail,
+                    },
                 },
-            },
-            include: {
-                user: true,
-            },
-        });
+                include: {
+                    user: true,
+                },
+            });
 
-        if (!assignedMembership) {
-            throw new ActionError("Utilisateur assigné introuvable dans ce projet.", 404);
+            if (!assignedMembership) {
+                throw new ActionError("Utilisateur assigné introuvable dans ce projet.", 404);
+            }
+
+            if (assignedMembership.role === "VIEWER") {
+                throw new ActionError("Un observateur ne peut pas être assigné à une tâche.", 400);
+            }
+
+            nextUserId = assignedMembership.userId;
+            assignedUserName = assignedMembership.user.name;
         }
+    }
 
-        if (assignedMembership.role === "VIEWER") {
-            throw new ActionError("Un observateur ne peut pas être assigné à une tâche.", 400);
+    // Normaliser les tags si fournis
+    let nextTags: string[] | null | undefined = undefined;
+    if (parsed.tags !== undefined) {
+        const normalized = [...new Set(parsed.tags
+            .map(tag => tag.trim())
+            .filter(Boolean))];
+        nextTags = normalized.length > 0 ? normalized : null;
+    }
+
+    // Valider teamId si fourni
+    let nextTeamId: string | null | undefined = undefined;
+    if (parsed.teamId !== undefined) {
+        if (parsed.teamId === null) {
+            nextTeamId = null;
+        } else {
+            const team = await prisma.team.findUnique({
+                where: { id: parsed.teamId },
+            });
+
+            if (!team) {
+                throw new ActionError("Équipe introuvable.", 404);
+            }
+
+            if (team.projectId !== task.projectId) {
+                throw new ActionError("L'équipe n'appartient pas à ce projet.", 400);
+            }
+
+            if (team.parentId !== null) {
+                throw new ActionError("Seules les équipes racines peuvent être responsables d'une tâche.", 400);
+            }
+
+            nextTeamId = team.id;
         }
+    }
 
-        assignedUserId = assignedMembership.userId;
-        assignedUserName = assignedMembership.user.name;
+    // Valider milestoneId si fourni
+    let nextMilestoneId: string | null | undefined = undefined;
+    if (parsed.milestoneId !== undefined) {
+        if (parsed.milestoneId === null) {
+            nextMilestoneId = null;
+        } else {
+            const milestone = await prisma.milestone.findUnique({
+                where: { id: parsed.milestoneId },
+            });
+
+            if (!milestone) {
+                throw new ActionError("Jalon introuvable.", 404);
+            }
+
+            if (milestone.projectId !== task.projectId) {
+                throw new ActionError("Le jalon n'appartient pas à ce projet.", 400);
+            }
+
+            nextMilestoneId = milestone.id;
+        }
     }
 
     const updatedTask = await prisma.task.update({
         where: { id: parsed.taskId },
         data: {
-            userId: assignedUserId,
-            dueDate: parsed.dueDate ?? null,
+            userId: nextUserId,
+            dueDate: parsed.dueDate === undefined ? undefined : parsed.dueDate,
+            priority: parsed.priority,
+            tags: nextTags === undefined
+                ? undefined
+                : (nextTags ?? Prisma.JsonNull),
+            teamId: nextTeamId,
+            milestoneId: nextMilestoneId,
         },
     });
 
     await createActivityLog({
         projectId: task.projectId,
         actorUserId: user.id,
-        type: "TASK_CREATED",
+        type: "TASK_STATUS_UPDATED",
         message: assignedUserName
             ? `${user.name} a mis à jour la gestion de la tâche "${task.name}" et l'a assignée à ${assignedUserName}.`
             : `${user.name} a mis à jour la gestion de la tâche "${task.name}".`,
+        metadata: {
+            taskId: task.id,
+            assignedUserId: nextUserId,
+            teamId: nextTeamId,
+            milestoneId: nextMilestoneId,
+            priority: parsed.priority,
+            tags: nextTags,
+        },
     });
 
     return {
@@ -314,7 +518,42 @@ export const updateTaskStatus = async (
         throw new ActionError("Vous n'êtes pas autorisé à modifier cette tâche.", 403);
     }
 
-    if (parsed.newStatus === TASK_STATUSES.DONE && !parsed.solutionDescription?.trim()) {
+    if (parsed.newStatus === TASK_STATUSES.IN_REVIEW) {
+        throw new ActionError(
+            "Utilisez l'action dédiée de mise en revue pour ce changement.",
+            400
+        );
+    }
+
+    let isPrivileged =
+        task.project.createdById === user.id ||
+        membership?.role === "MANAGER";
+
+    if (task.teamId) {
+        const team = await prisma.team.findUnique({
+            where: { id: task.teamId },
+            select: { leadUserId: true },
+        });
+        if (team?.leadUserId === user.id) {
+            isPrivileged = true;
+        }
+    }
+
+    if (
+        task.status === TASK_STATUSES.DONE &&
+        !isPrivileged
+    ) {
+        throw new ActionError(
+            "La tâche est terminée. Seul un responsable peut la renvoyer en revue.",
+            403
+        );
+    }
+
+    if (
+        parsed.newStatus === TASK_STATUSES.DONE &&
+        !parsed.solutionDescription?.trim() &&
+        !task.solutionDescription?.trim()
+    ) {
         throw new ActionError(
             "Une description de solution est requise pour terminer la tâche.",
             400
@@ -327,8 +566,20 @@ export const updateTaskStatus = async (
             status: parsed.newStatus,
             solutionDescription:
                 parsed.newStatus === TASK_STATUSES.DONE
-                    ? parsed.solutionDescription?.trim() || null
-                    : null,
+                    ? parsed.solutionDescription?.trim() || task.solutionDescription || null
+                    : task.solutionDescription,
+            reviewFeedback:
+                parsed.newStatus === TASK_STATUSES.DONE
+                    ? null
+                    : task.reviewFeedback,
+            reviewedById:
+                parsed.newStatus === TASK_STATUSES.DONE
+                    ? null
+                    : task.reviewedById,
+            reviewedAt:
+                parsed.newStatus === TASK_STATUSES.DONE
+                    ? null
+                    : task.reviewedAt,
         },
     });
 

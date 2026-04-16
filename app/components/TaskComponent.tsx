@@ -7,7 +7,7 @@ import { TASK_STATUS_LABELS, TASK_STATUSES } from "@/lib/task-status";
 
 interface TaskProps {
     task: Task;
-    index: number;
+    index?: number;
     canDelete?: boolean;
     onDelete?: (id: string) => void;
 }
@@ -22,15 +22,19 @@ const TaskComponent: FC<TaskProps> = ({ task, index, canDelete = false, onDelete
 
     return (
         <>
-            <td>
-                {index + 1}
-            </td>
+            {index !== undefined && (
+                <td>
+                    {index + 1}
+                </td>
+            )}
             <td>
                 <div className="flex flex-col">
                     <div className={`badge text-xd mb-2 font-semibold
                     ${task.status === TASK_STATUSES.TODO ? "bg-red-200 font-semibold" : ""}
                     ${task.status === TASK_STATUSES.IN_PROGRESS ? "bg-yellow-200 font-semibold" : ""}
+                    ${task.status === TASK_STATUSES.IN_REVIEW ? "bg-purple-200 font-semibold" : ""}
                     ${task.status === TASK_STATUSES.DONE ? "bg-green-200 font-semibold" : ""}
+                    ${task.status === TASK_STATUSES.CANCELLED ? "bg-gray-200 font-semibold" : ""}
                     `}>
 
                         {task.status in TASK_STATUS_LABELS
@@ -39,9 +43,44 @@ const TaskComponent: FC<TaskProps> = ({ task, index, canDelete = false, onDelete
 
                     </div>
 
+                    {task.priority && (
+                        <div className={`badge text-xs mb-2
+                        ${task.priority === "LOW" ? "bg-blue-100 text-blue-800" : ""}
+                        ${task.priority === "MEDIUM" ? "bg-yellow-100 text-yellow-800" : ""}
+                        ${task.priority === "HIGH" ? "bg-orange-100 text-orange-800" : ""}
+                        ${task.priority === "CRITICAL" ? "bg-red-100 text-red-800" : ""}
+                        `}>
+                            {task.priority === "LOW" && "Basse"}
+                            {task.priority === "MEDIUM" && "Moyenne"}
+                            {task.priority === "HIGH" && "Haute"}
+                            {task.priority === "CRITICAL" && "Critique"}
+                        </div>
+                    )}
+
                     <span className="text-sm font-bold">
                         {task.name.length > 100 ? `${task.name.slice(0, 100)}...` : task.name}
                     </span>
+
+                    {task.team && (
+                        <span className="text-xs opacity-70 mt-1">
+                            Équipe: {task.team.name}
+                        </span>
+                    )}
+
+                    {Array.isArray(task.tags) && task.tags.length > 0 && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                            {(task.tags as string[]).slice(0, 3).map((tag, i) => (
+                                <span key={i} className="badge badge-ghost badge-xs">
+                                    {tag}
+                                </span>
+                            ))}
+                            {task.tags.length > 3 && (
+                                <span className="badge badge-ghost badge-xs">
+                                    +{task.tags.length - 3}
+                                </span>
+                            )}
+                        </div>
+                    )}
 
                 </div>
             </td>

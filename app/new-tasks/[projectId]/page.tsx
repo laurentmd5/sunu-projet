@@ -1,9 +1,9 @@
 "use client";
 
-import { createTask, getProjectInfo, getProjectMembersWithRoles, getProjectUsers } from '@/app/actions';
+import { createTask, getProjectInfo, getProjectMembersWithRoles, getProjectUsers, getProjectTeams } from '@/app/actions';
 import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper';
-import { Project, ProjectRole, ProjectUserMember } from '@/type';
+import { Project, ProjectRole, ProjectUserMember, TaskPriority, ProjectTeamNode } from '@/type';
 import { ViewerPermission } from '@/lib/permissions-core';
 import { useAuthUser } from "@/lib/auth-client";
 import Link from 'next/link';
@@ -44,6 +44,10 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [dueDate, setDueDate] = useState<Date | null>(null);
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
+    const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
+    const [tagsInput, setTagsInput] = useState("");
+    const [selectedTeamId, setSelectedTeamId] = useState("");
+    const [availableTeams, setAvailableTeams] = useState<ProjectTeamNode[]>([]);
     const router = useRouter();
 
     const fetchInfos = async (projectId: string) => {
@@ -56,6 +60,9 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
             const projectMembers = await getProjectMembersWithRoles(projectId);
             setMembers(projectMembers as ProjectUserMember[]);
+
+            const teamsResult = await getProjectTeams(projectId);
+            setAvailableTeams(teamsResult.teamsTree);
         } catch (error) {
             console.error(`Erreur lors du chargement du projet :`, error);
         }
@@ -122,7 +129,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             return;
         }
 
-        if (!name || !description || !projectId) {
+        if (!name || !projectId) {
             toast.error("Veuillez remplir tous les champs obligatoires");
             return;
         }
@@ -132,14 +139,24 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             return;
         }
 
+        // Parser les tags
+        const parsedTags = tagsInput
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(Boolean);
+
         try {
-            await createTask(
+            await createTask({
                 name,
                 description,
                 dueDate,
                 projectId,
-                selectedUser ? selectedUser.email : null
-            );
+                assignToEmail: selectedUser ? selectedUser.email : null,
+                priority,
+                tags: parsedTags,
+                teamId: selectedTeamId || null,
+                milestoneId: null,
+            });
             router.push(`/project/${projectId}`);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
@@ -194,9 +211,63 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                     className='input input-bordered border border-base-300'
                                     type="date"
                                     min={new Date().toISOString().split("T")[0]}
-                                    onChange={(e) => setDueDate(new Date(e.target.value))}
+                                    onChange={(e) => setDueDate(e.target.value ? new Date(`${e.target.value}T00:00:00`) : null)}
                                     disabled={!canCreateTask} />
                             </div>
+                        )}
+                        {canCreateTask && (
+                            <>
+                                <div className='flex flex-col gap-2 mt-4'>
+                                    <span className='badge w-20 mr-2'>
+                                        Priorité
+                                    </span>
+                                    <select
+                                        className='select select-bordered border border-base-300'
+                                        value={priority}
+                                        onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                                        disabled={!canCreateTask}
+                                    >
+                                        <option value="LOW">Basse</option>
+                                        <option value="MEDIUM">Moyenne</option>
+                                        <option value="HIGH">Haute</option>
+                                        <option value="CRITICAL">Critique</option>
+                                    </select>
+                                </div>
+                                <div className='flex flex-col gap-2 mt-4'>
+                                    <span className='badge w-20 mr-2'>
+                                        Tags
+                                    </span>
+                                    <input
+                                        placeholder="frontend, api, urgent (séparés par virgules)"
+                                        className='input input-bordered border border-base-300'
+                                        type='text'
+                                        value={tagsInput}
+                                        onChange={(e) => setTagsInput(e.target.value)}
+                                        disabled={!canCreateTask}
+                                    />
+                                </div>
+                                <div className='flex flex-col gap-2 mt-4'>
+                                    <span className='badge w-20 mr-2'>
+                                        Équipe
+                                    </span>
+                                    <select
+                                        className='select select-bordered border border-base-300'
+                                        value={selectedTeamId}
+                                        onChange={(e) => setSelectedTeamId(e.target.value)}
+                                        disabled={!canCreateTask}
+                                    >
+                                        <option value="">Aucune équipe responsable</option>
+                                        {availableTeams.map((team) => (
+                                            <option key={team.id} value={team.id}>
+                                                {team.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs opacity-70 mt-1">
+                                        Cette équipe sera marquée responsable de la tâche.
+                                    </p>
+                                </div>
+                            </>
                         )}
                     </div>
                     <div className='md:w-3/4 mt-4 md:mt-0 md:ml-4'>

@@ -1,9 +1,9 @@
 "use client"
-import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskManagement, updateTaskStatus } from '@/app/actions'
+import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskManagement, updateTaskStatus, getProjectTeams, sendTaskToReview } from '@/app/actions'
 import EmptyState from '@/app/components/EmptyState'
 import UserInfo from '@/app/components/UserInfo'
 import Wrapper from '@/app/components/Wrapper'
-import { Project, ProjectRole, ProjectUserMember, Task, TaskStatus } from '@/type'
+import { Project, ProjectRole, ProjectUserMember, Task, TaskStatus, TaskPriority, ProjectTeamNode } from '@/type'
 import Link from 'next/link'
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactQuill from 'react-quill-new'
@@ -25,7 +25,13 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const [realStatus, setRealStatus] = useState<TaskStatus>(TASK_STATUSES.TODO)
     const [selectedAssigneeEmail, setSelectedAssigneeEmail] = useState<string>("");
     const [managementDueDate, setManagementDueDate] = useState<string>("");
+    const [managementPriority, setManagementPriority] = useState<TaskPriority>("MEDIUM");
+    const [managementTagsInput, setManagementTagsInput] = useState("");
+    const [managementTeamId, setManagementTeamId] = useState("");
+    const [availableTeams, setAvailableTeams] = useState<ProjectTeamNode[]>([]);
     const [isSubmittingManagement, setIsSubmittingManagement] = useState(false);
+    const [reviewFeedback, setReviewFeedback] = useState("");
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
     const modules = {
         toolbar: [
@@ -43,15 +49,19 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const fetchInfos = async (taskId: string) => {
         try {
             const task = await getTaskDetails(taskId)
-            setTask(task)
+            setTask(task as Task)
             setStatus(task.status)
             setRealStatus(task.status)
             setSelectedAssigneeEmail(task.user?.email || "");
             setManagementDueDate(
                 task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] || "" : ""
             );
+            setManagementPriority((task.priority as TaskPriority) || "MEDIUM");
+            setManagementTagsInput(Array.isArray(task.tags) ? task.tags.join(", ") : "");
+            setManagementTeamId(task.teamId || "");
             await fetchProject(task.projectId)
             await fetchMembers(task.projectId)
+            await fetchTeams(task.projectId)
         } catch (error) {
             toast.error("Erreur lors du chargement des détails de la tâche.")
         }
@@ -70,6 +80,15 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         try {
             const projectMembers = await getProjectMembersWithRoles(projectId);
             setMembers(projectMembers as ProjectUserMember[]);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        }
+    };
+
+    const fetchTeams = async (projectId: string) => {
+        try {
+            const teamsResult = await getProjectTeams(projectId);
+            setAvailableTeams(teamsResult.teamsTree);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
         }
@@ -110,6 +129,18 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const canManageTaskSettings =
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
 
+    const isTeamLeadForTask =
+        !!task?.team && task.team.leadUserId === currentMembership?.userId;
+
+    const canSendToReview =
+        !!task &&
+        task.status === TASK_STATUSES.DONE &&
+        (
+            currentUserRole === "OWNER" ||
+            currentUserRole === "MANAGER" ||
+            isTeamLeadForTask
+        );
+
     const assignableMembers = useMemo(() => {
         return members.filter((member) => member.role !== "VIEWER");
     }, [members]);
@@ -120,11 +151,21 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         try {
             setIsSubmittingManagement(true);
 
-            await updateTaskManagement(
-                task.id,
-                selectedAssigneeEmail || null,
-                managementDueDate ? new Date(managementDueDate) : null
-            );
+            // Parser les tags
+            const parsedTags = managementTagsInput
+                .split(',')
+                .map(tag => tag.trim())
+                .filter(Boolean);
+
+            await updateTaskManagement({
+                taskId: task.id,
+                assignToEmail: selectedAssigneeEmail || null,
+                dueDate: managementDueDate ? new Date(`${managementDueDate}T00:00:00`) : null,
+                priority: managementPriority,
+                tags: parsedTags,
+                teamId: managementTeamId || null,
+                milestoneId: null,
+            });
 
             await fetchInfos(task.id);
             toast.success("Gestion de la tâche mise à jour");
@@ -144,12 +185,12 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         if (
             newStatus === TASK_STATUSES.TODO ||
             newStatus === TASK_STATUSES.IN_PROGRESS ||
-            newStatus === TASK_STATUSES.IN_REVIEW
+            newStatus === TASK_STATUSES.CANCELLED
         ) {
             changeStatus(taskId, newStatus);
-            toast.success("Status changé");
+            toast.success("Statut changé");
             modal?.close();
-        } else {
+        } else if (newStatus === TASK_STATUSES.DONE) {
             modal?.showModal();
         }
     }
@@ -179,6 +220,27 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             setStatus(realStatus)
         }
     }
+
+    const handleSendToReview = async () => {
+        if (!task) return;
+
+        try {
+            setIsSubmittingReview(true);
+            await sendTaskToReview({
+                taskId: task.id,
+                reviewFeedback,
+            });
+            setReviewFeedback("");
+            const modal = document.getElementById("review_modal") as HTMLDialogElement | null;
+            modal?.close();
+            await fetchInfos(task.id);
+            toast.success("La tâche a été mise en revue.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsSubmittingReview(false);
+        }
+    };
 
     useEffect(() => {
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
@@ -232,43 +294,147 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         {task.name}
                     </h1>
 
+                    <div className='flex flex-wrap gap-2 mb-4'>
+                        {task.priority && (
+                            <div className={`badge text-xs
+                            ${task.priority === "LOW" ? "bg-blue-100 text-blue-800" : ""}
+                            ${task.priority === "MEDIUM" ? "bg-yellow-100 text-yellow-800" : ""}
+                            ${task.priority === "HIGH" ? "bg-orange-100 text-orange-800" : ""}
+                            ${task.priority === "CRITICAL" ? "bg-red-100 text-red-800" : ""}
+                            `}>
+                                {task.priority === "LOW" && "Basse"}
+                                {task.priority === "MEDIUM" && "Moyenne"}
+                                {task.priority === "HIGH" && "Haute"}
+                                {task.priority === "CRITICAL" && "Critique"}
+                            </div>
+                        )}
+                        {task.team && (
+                            <div className='badge badge-ghost text-xs'>
+                                Équipe: {task.team.name}
+                            </div>
+                        )}
+                        {task.milestone && (
+                            <div className='badge badge-ghost text-xs'>
+                                Jalon: {task.milestone.name}
+                            </div>
+                        )}
+                    </div>
+
+                    {Array.isArray(task.tags) && task.tags.length > 0 && (
+                        <div className='flex gap-1 mb-4 flex-wrap'>
+                            {task.tags.map((tag, i) => (
+                                <span key={i} className="badge badge-ghost badge-xs">
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
+                    {task.status === TASK_STATUSES.IN_REVIEW && task.reviewFeedback && (
+                        <div className="alert alert-warning mb-4">
+                            <div className="flex flex-col gap-1">
+                                <span className="font-semibold">Retour de revue</span>
+                                <span>{task.reviewFeedback}</span>
+                                {task.reviewedBy && (
+                                    <span className="text-xs opacity-70">
+                                        Demandé par {task.reviewedBy.name || task.reviewedBy.email}
+                                        {task.reviewedAt ? ` le ${new Date(task.reviewedAt).toLocaleString()}` : ""}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {canManageTaskSettings && (
                         <div className="p-5 border border-base-300 rounded-xl my-4">
                             <h2 className="font-semibold text-lg mb-4">Gestion de la tâche</h2>
 
-                            <div className="flex flex-col gap-4 md:flex-row md:items-end">
-                                <div className="flex-1">
-                                    <label className="label">
-                                        <span className="label-text">Assigné à</span>
-                                    </label>
-                                    <select
-                                        className="select select-bordered w-full"
-                                        value={selectedAssigneeEmail}
-                                        onChange={(e) => setSelectedAssigneeEmail(e.target.value)}
-                                    >
-                                        <option value="">Non assignée</option>
-                                        {assignableMembers.map((member) => (
-                                            <option key={member.userId} value={member.user.email}>
-                                                {member.user.name || member.user.email}
-                                            </option>
-                                        ))}
-                                    </select>
+                            <div className="flex flex-col gap-4">
+                                <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                    <div className="flex-1">
+                                        <label className="label">
+                                            <span className="label-text">Assigné à</span>
+                                        </label>
+                                        <select
+                                            className="select select-bordered w-full"
+                                            value={selectedAssigneeEmail}
+                                            onChange={(e) => setSelectedAssigneeEmail(e.target.value)}
+                                        >
+                                            <option value="">Non assignée</option>
+                                            {assignableMembers.map((member) => (
+                                                <option key={member.userId} value={member.user.email}>
+                                                    {member.user.name || member.user.email}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="flex-1">
+                                        <label className="label">
+                                            <span className="label-text">Date d'échéance</span>
+                                        </label>
+                                        <input
+                                            type="date"
+                                            className="input input-bordered w-full"
+                                            value={managementDueDate}
+                                            min={new Date().toISOString().split("T")[0]}
+                                            onChange={(e) => setManagementDueDate(e.target.value)}
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="flex-1">
-                                    <label className="label">
-                                        <span className="label-text">Date d'échéance</span>
-                                    </label>
-                                    <input
-                                        type="date"
-                                        className="input input-bordered w-full"
-                                        value={managementDueDate}
-                                        min={new Date().toISOString().split("T")[0]}
-                                        onChange={(e) => setManagementDueDate(e.target.value)}
-                                    />
+                                <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                    <div className="flex-1">
+                                        <label className="label">
+                                            <span className="label-text">Priorité</span>
+                                        </label>
+                                        <select
+                                            className="select select-bordered w-full"
+                                            value={managementPriority}
+                                            onChange={(e) => setManagementPriority(e.target.value as TaskPriority)}
+                                        >
+                                            <option value="LOW">Basse</option>
+                                            <option value="MEDIUM">Moyenne</option>
+                                            <option value="HIGH">Haute</option>
+                                            <option value="CRITICAL">Critique</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex-1">
+                                        <label className="label">
+                                            <span className="label-text">Tags</span>
+                                        </label>
+                                        <input
+                                            placeholder="frontend, api, urgent (séparés par virgules)"
+                                            className="input input-bordered w-full"
+                                            type='text'
+                                            value={managementTagsInput}
+                                            onChange={(e) => setManagementTagsInput(e.target.value)}
+                                        />
+                                    </div>
                                 </div>
 
-                                <div>
+                                <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                    <div className="flex-1">
+                                        <label className="label">
+                                            <span className="label-text">Équipe responsable</span>
+                                        </label>
+                                        <select
+                                            className="select select-bordered w-full"
+                                            value={managementTeamId}
+                                            onChange={(e) => setManagementTeamId(e.target.value)}
+                                        >
+                                            <option value="">Aucune équipe responsable</option>
+                                            {availableTeams.map((team) => (
+                                                <option key={team.id} value={team.id}>
+                                                    {team.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end">
                                     <button
                                         className="btn btn-primary w-full md:w-auto"
                                         onClick={handleSaveTaskManagement}
@@ -303,10 +469,20 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                             >
                                 <option value={TASK_STATUSES.TODO}>À faire</option>
                                 <option value={TASK_STATUSES.IN_PROGRESS}>En cours</option>
-                                <option value={TASK_STATUSES.IN_REVIEW}>En revue</option>
                                 <option value={TASK_STATUSES.DONE}>Terminée</option>
                                 <option value={TASK_STATUSES.CANCELLED}>Annulée</option>
                             </select>
+                            {canSendToReview && (
+                                <button
+                                    className="btn btn-warning btn-sm mt-2"
+                                    onClick={() => {
+                                        const modal = document.getElementById("review_modal") as HTMLDialogElement | null;
+                                        modal?.showModal();
+                                    }}
+                                >
+                                    Mettre en revue
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -365,6 +541,36 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                 onChange={setSolution}
                             />
                             <button onClick={() => closeTask(status)} className='btn mt-4'>Valider</button>
+                        </div>
+                    </dialog>
+
+                    <dialog id="review_modal" className="modal">
+                        <div className="modal-box">
+                            <form method="dialog">
+                                <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+                            </form>
+
+                            <h3 className="font-bold text-lg">Mettre la tâche en revue</h3>
+                            <p className="py-4">
+                                Expliquez précisément ce qui ne va pas dans la solution proposée.
+                            </p>
+
+                            <textarea
+                                className="textarea textarea-bordered w-full min-h-32"
+                                placeholder="Décrivez le problème constaté..."
+                                value={reviewFeedback}
+                                onChange={(e) => setReviewFeedback(e.target.value)}
+                            />
+
+                            <div className="flex justify-end mt-4">
+                                <button
+                                    className="btn btn-warning"
+                                    onClick={handleSendToReview}
+                                    disabled={isSubmittingReview}
+                                >
+                                    {isSubmittingReview ? "Validation..." : "Valider la revue"}
+                                </button>
+                            </div>
                         </div>
                     </dialog>
 

@@ -4,6 +4,7 @@ import { CalendarDays, FolderKanban, Menu, X } from "lucide-react";
 import React, { useState } from "react";
 import LocalLogoutButton from "./LocalLogoutButton";
 import LocalUserBadge from "./LocalUserBadge";
+import NotificationBell from "./NotificationBell";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -57,6 +58,7 @@ const Navbar = () => {
 
                     <div className="hidden sm:flex items-center gap-3">
                         {renderLinks("btn btn-sm")}
+                        <NotificationBell />
                         <LocalUserBadge />
                         <LocalLogoutButton />
                     </div>
@@ -72,8 +74,12 @@ const Navbar = () => {
                     <div className="mb-4">
                         <LocalUserBadge />
                     </div>
-                    <div className="mb-6 flex items-center justify-between">
-                        <LocalLogoutButton />
+                    <div className="mb-6 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <NotificationBell />
+                            <LocalLogoutButton />
+                        </div>
+
                         <button
                             className="btn btn-sm w-fit"
                             onClick={() => setMenuOpen(false)}

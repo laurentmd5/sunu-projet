@@ -117,6 +117,32 @@ export type TaskComment = {
   };
 };
 
+export type TaskRoutingTargetType = "USER" | "SUBTEAM";
+
+export type TaskRouting = {
+    id: string;
+    taskId: string;
+    rootTeamId: string;
+    targetType: TaskRoutingTargetType;
+    targetUserId: string | null;
+    targetTeamId: string | null;
+    assignedById: string;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+    rootTeam?: Team;
+    targetUser?: {
+        id: string;
+        name: string | null;
+        email: string;
+    } | null;
+    targetTeam?: Team | null;
+    assignedBy?: {
+        id: string;
+        name: string | null;
+        email: string;
+    };
+};
+
 export type Team = PrismaTeam & {
     createdBy?: User;
     members?: TeamMember[];
@@ -185,6 +211,7 @@ export type Task = Omit<PrismaTask, "tags"> & {
         name: string | null;
         email: string;
     } | null;
+    routing?: TaskRouting | null;
 };
 
 export type MeetingRecording = PrismaMeetingRecording & {

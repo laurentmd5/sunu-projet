@@ -57,8 +57,18 @@ enum ActivityType {
   SUBTEAM_CREATED
   TASK_PRIORITY_CHANGED
   MILESTONE_CREATED
+  MILESTONE_UPDATED
+  MILESTONE_DELETED
   MILESTONE_COMPLETED
   MILESTONE_DELAYED
+  TASK_ROUTED_TO_USER
+  TASK_ROUTED_TO_SUBTEAM
+  TASK_ROUTING_CLEARED
+}
+
+enum TaskRoutingTargetType {
+  USER
+  SUBTEAM
 }
 
 model User {
@@ -82,6 +92,9 @@ model User {
   taskComments          TaskComment[]        @relation("TaskCommentAuthor")
   meetingParticipations MeetingParticipant[]
   notifications         Notification[]
+
+  taskRoutingsAsTarget     TaskRouting[] @relation("TaskRoutingTargetUser")
+  taskRoutingsAssignedByMe TaskRouting[] @relation("TaskRoutingAssignedBy")
 
   credential AuthCredential?
   sessions   Session[]
@@ -113,6 +126,9 @@ model Team {
   meetings   TeamMeeting[]
   recordings MeetingRecording[]
   tasks      Task[]
+
+  taskRoutingsAsRoot   TaskRouting[] @relation("TaskRoutingRootTeam")
+  taskRoutingsAsTarget TaskRouting[] @relation("TaskRoutingTargetTeam")
 
   @@index([projectId])
   @@index([parentId])
@@ -188,6 +204,7 @@ model Task {
   team       Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
   comments   TaskComment[]
   reviewedBy User?         @relation("TaskReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  routing    TaskRouting?
 
   @@index([projectId])
   @@index([userId])
@@ -370,6 +387,29 @@ model TaskComment {
 
   @@index([taskId, createdAt])
   @@index([authorId])
+}
+
+model TaskRouting {
+  id           String                @id @default(uuid()) @db.VarChar(36)
+  taskId       String                @unique @db.VarChar(36)
+  rootTeamId   String                @db.VarChar(36)
+  targetType   TaskRoutingTargetType
+  targetUserId String?               @db.VarChar(36)
+  targetTeamId String?               @db.VarChar(36)
+  assignedById String                @db.VarChar(36)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  rootTeam   Team  @relation("TaskRoutingRootTeam", fields: [rootTeamId], references: [id], onDelete: Cascade)
+  targetUser User? @relation("TaskRoutingTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetTeam Team? @relation("TaskRoutingTargetTeam", fields: [targetTeamId], references: [id], onDelete: SetNull)
+  assignedBy User  @relation("TaskRoutingAssignedBy", fields: [assignedById], references: [id], onDelete: Cascade)
+
+  @@index([rootTeamId])
+  @@index([targetUserId])
+  @@index([targetTeamId])
+  @@index([assignedById])
 }
 
 model ViewerPermissionGrant {

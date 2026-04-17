@@ -274,3 +274,44 @@ export const getProjectMilestonesSchema = z.object({
         .trim()
         .min(1, "Projet invalide."),
 });
+
+export const updateMilestoneSchema = z.object({
+    milestoneId: z
+        .string()
+        .trim()
+        .min(1, "Jalon invalide."),
+    name: z
+        .string()
+        .trim()
+        .min(2, "Le nom du jalon doit contenir au moins 2 caractères.")
+        .max(100, "Le nom du jalon est trop long."),
+    description: z
+        .string()
+        .trim()
+        .max(2000, "La description du jalon est trop longue.")
+        .optional()
+        .or(z.literal("")),
+    targetDate: z.date().nullable().optional(),
+    status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "DELAYED"]),
+});
+
+export const deleteMilestoneSchema = z.object({
+    milestoneId: z
+        .string()
+        .trim()
+        .min(1, "Jalon invalide."),
+});
+
+export const routeTaskToUserSchema = z.object({
+    taskId: z.string().trim().min(1, "Tâche invalide."),
+    targetUserId: z.string().trim().min(1, "Utilisateur invalide."),
+});
+
+export const routeTaskToSubteamSchema = z.object({
+    taskId: z.string().trim().min(1, "Tâche invalide."),
+    targetTeamId: z.string().trim().min(1, "Sous-équipe invalide."),
+});
+
+export const clearTaskRoutingSchema = z.object({
+    taskId: z.string().trim().min(1, "Tâche invalide."),
+});

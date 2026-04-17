@@ -20,11 +20,7 @@ import { Project, ProjectRole, ProjectUserMember } from "@/type";
 import { ViewerPermission } from "@/lib/permissions-core";
 import { useAuthUser } from "@/lib/auth-client";
 import {
-    CircleCheckBig,
     CopyPlus,
-    ListTodo,
-    Loader,
-    SlidersHorizontal,
     UserCheck,
 } from "lucide-react";
 import Link from "next/link";
@@ -35,6 +31,7 @@ import ProjectOverviewTab from "./ProjectOverviewTab";
 import ProjectMembersTab from "./ProjectMembersTab";
 import ProjectActivityTab from "./ProjectActivityTab";
 import ProjectTeamsTab from "./ProjectTeamsTab";
+import ProjectMilestonesTab from "./ProjectMilestonesTab";
 
 const ROLE_ORDER: Record<ProjectRole, number> = {
     OWNER: 0,
@@ -67,7 +64,7 @@ type ActivityLogItem = {
     };
 };
 
-type ProjectTabKey = "overview" | "tasks" | "teams" | "members" | "activity";
+type ProjectTabKey = "overview" | "tasks" | "teams" | "milestones" | "members" | "activity";
 
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const { email, isLoading } = useAuthUser();
@@ -78,10 +75,17 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [membersLoading, setMembersLoading] = useState(false);
     const [statusFilter, setStatusFilter] = useState<string>("");
     const [assignedFilter, setAssignedFilter] = useState<boolean>(false);
+    const [priorityFilter, setPriorityFilter] = useState<string>("");
+    const [milestoneFilter, setMilestoneFilter] = useState<string>("");
+    const [teamFilter, setTeamFilter] = useState<string>("");
+    const [routingFilter, setRoutingFilter] = useState<string>("");
+    const [searchFilter, setSearchFilter] = useState<string>("");
     const [taskCounts, setTaskCounts] = useState({
         todo: 0,
         inProgress: 0,
+        inReview: 0,
         done: 0,
+        cancelled: 0,
         assigned: 0,
     });
 
@@ -175,11 +179,19 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 inProgress: project.tasks.filter(
                     (task) => task.status === TASK_STATUSES.IN_PROGRESS
                 ).length,
+                inReview: project.tasks.filter(
+                    (task) => task.status === TASK_STATUSES.IN_REVIEW
+                ).length,
                 done: project.tasks.filter(
                     (task) => task.status === TASK_STATUSES.DONE
                 ).length,
+                cancelled: project.tasks.filter(
+                    (task) => task.status === TASK_STATUSES.CANCELLED
+                ).length,
                 assigned: project.tasks.filter(
-                    (task) => task?.user?.email === email
+                    (task) =>
+                        task?.user?.email === email ||
+                        task?.routing?.targetUser?.email === email
                 ).length,
             };
             setTaskCounts(counts);
@@ -203,6 +215,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const currentViewerPermissions = currentMembership?.permissions ?? [];
     const canManageMembers = currentUserRole === "OWNER";
     const canManageTeams = currentUserRole === "OWNER" || currentUserRole === "MANAGER";
+    const canManageMilestones =
+        currentUserRole === "OWNER" || currentUserRole === "MANAGER";
     const canCreateTask =
         currentUserRole === "OWNER" ||
         currentUserRole === "MANAGER" ||
@@ -229,11 +243,74 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         };
     }, [members]);
 
-    const filteredTasks = project?.tasks?.filter((task) => {
-        const statusMatch = !statusFilter || task.status === statusFilter;
-        const assignedMatch = !assignedFilter || task?.user?.email === email;
-        return statusMatch && assignedMatch;
-    });
+    const milestoneOptions = useMemo(() => {
+        const map = new Map<string, string>();
+        (project?.tasks || []).forEach((task) => {
+            if (task.milestoneId && task.milestone?.name) {
+                map.set(task.milestoneId, task.milestone.name);
+            }
+        });
+        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+    }, [project]);
+
+    const teamOptions = useMemo(() => {
+        const map = new Map<string, string>();
+        (project?.tasks || []).forEach((task) => {
+            if (task.teamId && task.team?.name) {
+                map.set(task.teamId, task.team.name);
+            }
+        });
+        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+    }, [project]);
+
+    const filteredTasks = useMemo(() => {
+        return (project?.tasks || []).filter((task) => {
+            const matchesStatus = !statusFilter || task.status === statusFilter;
+            const matchesPriority = !priorityFilter || task.priority === priorityFilter;
+            const matchesMilestone = !milestoneFilter || task.milestoneId === milestoneFilter;
+            const matchesTeam = !teamFilter || task.teamId === teamFilter;
+
+            const matchesRouting =
+                !routingFilter ||
+                (routingFilter === "NONE" && !task.routing) ||
+                (routingFilter === "USER" && task.routing?.targetType === "USER") ||
+                (routingFilter === "SUBTEAM" && task.routing?.targetType === "SUBTEAM");
+
+            const matchesSearch =
+                !searchFilter ||
+                task.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                (task.description?.toLowerCase().includes(searchFilter.toLowerCase())) ||
+                (Array.isArray(task.tags) &&
+                    task.tags.some((tag) =>
+                        tag.toLowerCase().includes(searchFilter.toLowerCase())
+                    ));
+
+            const matchesAssigned =
+                !assignedFilter ||
+                task.user?.email === email ||
+                task.routing?.targetUser?.email === email;
+
+            return (
+                matchesStatus &&
+                matchesPriority &&
+                matchesMilestone &&
+                matchesTeam &&
+                matchesRouting &&
+                matchesSearch &&
+                matchesAssigned
+            );
+        });
+    }, [
+        project,
+        statusFilter,
+        priorityFilter,
+        milestoneFilter,
+        teamFilter,
+        routingFilter,
+        searchFilter,
+        assignedFilter,
+        email,
+    ]);
 
     if (isLoading) {
         return (
@@ -412,6 +489,12 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         Équipes
                     </button>
                     <button
+                        onClick={() => setActiveTab("milestones")}
+                        className={`btn btn-sm ${activeTab === "milestones" ? "btn-primary" : "btn-ghost"}`}
+                    >
+                        Jalons
+                    </button>
+                    <button
                         onClick={() => setActiveTab("members")}
                         className={`btn btn-sm ${activeTab === "members" ? "btn-primary" : "btn-ghost"}`}
                     >
@@ -436,48 +519,84 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     <div className="space-y-4">
                         <div className="flex flex-col gap-2">
                             <div className="flex flex-wrap gap-2">
-                                <button
-                                    onClick={() => {
-                                        setStatusFilter("");
-                                        setAssignedFilter(false);
-                                    }}
-                                    className={`btn btn-sm ${!statusFilter ? "btn-primary" : ""}`}
+                                <select
+                                    className="select select-bordered select-sm"
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
                                 >
-                                    <SlidersHorizontal className="w-4" />
-                                    Tous ({project?.tasks?.length || 0})
-                                </button>
+                                    <option value="">Tous les statuts</option>
+                                    <option value="TODO">À faire</option>
+                                    <option value="IN_PROGRESS">En cours</option>
+                                    <option value="IN_REVIEW">En revue</option>
+                                    <option value="DONE">Terminées</option>
+                                    <option value="CANCELLED">Annulées</option>
+                                </select>
+
+                                <select
+                                    className="select select-bordered select-sm"
+                                    value={priorityFilter}
+                                    onChange={(e) => setPriorityFilter(e.target.value)}
+                                >
+                                    <option value="">Toutes les priorités</option>
+                                    <option value="LOW">Basse</option>
+                                    <option value="MEDIUM">Moyenne</option>
+                                    <option value="HIGH">Haute</option>
+                                    <option value="CRITICAL">Critique</option>
+                                </select>
+
+                                <select
+                                    className="select select-bordered select-sm"
+                                    value={milestoneFilter}
+                                    onChange={(e) => setMilestoneFilter(e.target.value)}
+                                >
+                                    <option value="">Tous les jalons</option>
+                                    {milestoneOptions.map((milestone) => (
+                                        <option key={milestone.id} value={milestone.id}>
+                                            {milestone.name}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    className="select select-bordered select-sm"
+                                    value={teamFilter}
+                                    onChange={(e) => setTeamFilter(e.target.value)}
+                                >
+                                    <option value="">Toutes les équipes</option>
+                                    {teamOptions.map((team) => (
+                                        <option key={team.id} value={team.id}>
+                                            {team.name}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    className="select select-bordered select-sm"
+                                    value={routingFilter}
+                                    onChange={(e) => setRoutingFilter(e.target.value)}
+                                >
+                                    <option value="">Toutes les redistributions</option>
+                                    <option value="NONE">Sans redistribution</option>
+                                    <option value="USER">Vers membre</option>
+                                    <option value="SUBTEAM">Vers sous-équipe</option>
+                                </select>
 
                                 <button
-                                    onClick={() => setStatusFilter(TASK_STATUSES.TODO)}
-                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.TODO ? "btn-primary" : ""}`}
+                                    className={`btn btn-sm ${assignedFilter ? "btn-primary" : "btn-outline"}`}
+                                    onClick={() => setAssignedFilter((prev) => !prev)}
                                 >
-                                    <ListTodo className="w-4" />
-                                    À faire ({taskCounts.todo})
+                                    Vos tâches
                                 </button>
+                            </div>
 
-                                <button
-                                    onClick={() => setStatusFilter(TASK_STATUSES.IN_PROGRESS)}
-                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.IN_PROGRESS ? "btn-primary" : ""}`}
-                                >
-                                    <Loader className="w-4" />
-                                    En Cours ({taskCounts.inProgress})
-                                </button>
-
-                                <button
-                                    onClick={() => setStatusFilter(TASK_STATUSES.DONE)}
-                                    className={`btn btn-sm ${statusFilter === TASK_STATUSES.DONE ? "btn-primary" : ""}`}
-                                >
-                                    <CircleCheckBig className="w-4" />
-                                    Terminée(s) ({taskCounts.done})
-                                </button>
-
-                                <button
-                                    onClick={() => setAssignedFilter(!assignedFilter)}
-                                    className={`btn btn-sm ${assignedFilter ? "btn-primary" : ""}`}
-                                >
-                                    <UserCheck className="w-4" />
-                                    Vos tâches ({taskCounts.assigned})
-                                </button>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                                <input
+                                    type="text"
+                                    className="input input-bordered input-sm flex-1 min-w-[200px]"
+                                    placeholder="Rechercher une tâche, un tag..."
+                                    value={searchFilter}
+                                    onChange={(e) => setSearchFilter(e.target.value)}
+                                />
                             </div>
                         </div>
 
@@ -535,6 +654,14 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     canManageTeams={canManageTeams}
                     members={members}
                 />
+
+                {activeTab === "milestones" && project && (
+                    <ProjectMilestonesTab
+                        projectId={project.id}
+                        tasks={project.tasks || []}
+                        canManageMilestones={canManageMilestones}
+                    />
+                )}
 
                 <ProjectMembersTab
                     isActive={activeTab === "members"}

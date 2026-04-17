@@ -91,24 +91,35 @@ export async function assertTaskAccess(taskId: string) {
         throw new ActionError("Utilisateur introuvable en base.", 401);
     }
 
-    const task = await prisma.task.findFirst({
-        where: {
-            id: taskId,
-            project: {
-                is: {
-                    OR: [
-                        { createdById: user.id },
-                        { users: { some: { userId: user.id } } },
-                    ],
-                },
-            },
-        },
+    const task = await prisma.task.findUnique({
+        where: { id: taskId },
         include: {
             project: true,
+            team: true,
         },
     });
 
     if (!task) {
+        throw new ActionError("Tâche introuvable.", 404);
+    }
+
+    const projectMembership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId: user.id,
+                projectId: task.projectId,
+            },
+        },
+        select: {
+            role: true,
+        },
+    });
+
+    const isProjectOwner = task.project.createdById === user.id;
+    const isProjectMember = !!projectMembership;
+    const isRootTeamLead = task.team?.leadUserId === user.id;
+
+    if (!isProjectOwner && !isProjectMember && !isRootTeamLead) {
         throw new ActionError("Tâche introuvable ou accès refusé.", 404);
     }
 

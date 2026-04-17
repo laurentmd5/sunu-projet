@@ -269,6 +269,28 @@ export async function getProjectInfo(idProject: string, details: boolean) {
                       include: {
                           user: true,
                           createdBy: true,
+                          team: true,
+                          milestone: true,
+                          routing: {
+                              include: {
+                                  rootTeam: true,
+                                  targetTeam: true,
+                                  targetUser: {
+                                      select: {
+                                          id: true,
+                                          name: true,
+                                          email: true,
+                                      },
+                                  },
+                                  assignedBy: {
+                                      select: {
+                                          id: true,
+                                          name: true,
+                                          email: true,
+                                      },
+                                  },
+                              },
+                          },
                       },
                   },
                   users: {
@@ -314,6 +336,12 @@ export async function getProjectInfo(idProject: string, details: boolean) {
 
     return {
         ...project,
+        tasks: "tasks" in project && Array.isArray(project.tasks)
+            ? project.tasks.map((task) => ({
+                  ...task,
+                  tags: normalizeTaskTags(task.tags),
+              }))
+            : undefined,
         users:
             "users" in project && Array.isArray(project.users)
                 ? project.users.map(

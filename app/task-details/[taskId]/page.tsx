@@ -1,5 +1,5 @@
 "use client"
-import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskManagement, updateTaskStatus, getProjectTeams, sendTaskToReview, addTaskComment, getProjectMilestones, createMilestone } from '@/app/actions'
+import { getProjectInfo, getProjectMembersWithRoles, getTaskDetails, updateTaskManagement, updateTaskStatus, getProjectTeams, sendTaskToReview, addTaskComment, getProjectMilestones, createMilestone, routeTaskToUser, routeTaskToSubteam, clearTaskRouting } from '@/app/actions'
 import EmptyState from '@/app/components/EmptyState'
 import UserInfo from '@/app/components/UserInfo'
 import Wrapper from '@/app/components/Wrapper'
@@ -40,6 +40,9 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const [newMilestoneDescription, setNewMilestoneDescription] = useState("");
     const [newMilestoneTargetDate, setNewMilestoneTargetDate] = useState("");
     const [isCreatingMilestone, setIsCreatingMilestone] = useState(false);
+    const [selectedRoutingUserId, setSelectedRoutingUserId] = useState("");
+    const [selectedRoutingTeamId, setSelectedRoutingTeamId] = useState("");
+    const [isSubmittingRouting, setIsSubmittingRouting] = useState(false);
 
     const modules = {
         toolbar: [
@@ -68,6 +71,8 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             setManagementTagsInput(Array.isArray(task.tags) ? task.tags.join(", ") : "");
             setManagementTeamId(task.teamId || "");
             setManagementMilestoneId(task.milestoneId || "");
+            setSelectedRoutingUserId(task.routing?.targetType === "USER" ? (task.routing.targetUserId || "") : "");
+            setSelectedRoutingTeamId(task.routing?.targetType === "SUBTEAM" ? (task.routing.targetTeamId || "") : "");
             await fetchProject(task.projectId)
             await fetchMembers(task.projectId)
             await fetchTeams(task.projectId)
@@ -124,10 +129,13 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
     const changeStatus = async (taskId: string, newStatus: TaskStatus) => {
         try {
-            await updateTaskStatus(taskId, newStatus)
-            fetchInfos(taskId)
+            await updateTaskStatus(taskId, newStatus);
+            await fetchInfos(taskId);
+            toast.success("Statut changé");
+            return true;
         } catch (error) {
-            toast.error("Erreur lors du changement de status")
+            toast.error(error instanceof Error ? error.message : "Erreur lors du changement de statut");
+            return false;
         }
     }
 
@@ -138,18 +146,20 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
     const currentUserRole: ProjectRole | null = currentMembership?.role ?? null;
 
+    const isTeamLeadForTask =
+        !!task?.team && task.team.leadUserId === currentMembership?.userId;
+
     const canUpdateStatus = !!task && (
         task.user?.email === email ||
         task.createdBy?.email === email ||
         currentUserRole === "OWNER" ||
-        currentUserRole === "MANAGER"
+        currentUserRole === "MANAGER" ||
+        isTeamLeadForTask ||
+        task.routing?.targetType === "SUBTEAM"
     );
 
     const canManageTaskSettings =
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
-
-    const isTeamLeadForTask =
-        !!task?.team && task.team.leadUserId === currentMembership?.userId;
 
     const canSendToReview =
         !!task &&
@@ -164,6 +174,25 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         currentUserRole !== null && currentUserRole !== "VIEWER";
 
     const assignableMembers = useMemo(() => {
+        return members.filter((member) => member.role !== "VIEWER");
+    }, [members]);
+
+    const availableSubteams = useMemo(() => {
+        if (!task?.teamId) return [];
+        return availableTeams
+            .flatMap((team) => team.id === task.teamId ? team.children : [])
+            .filter(Boolean);
+    }, [availableTeams, task?.teamId]);
+
+    const canRedistributeTask =
+        !!task?.teamId &&
+        (
+            currentUserRole === "OWNER" ||
+            currentUserRole === "MANAGER" ||
+            isTeamLeadForTask
+        );
+
+    const routingEligibleMembers = useMemo(() => {
         return members.filter((member) => member.role !== "VIEWER");
     }, [members]);
 
@@ -200,7 +229,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         }
     };
 
-    const handleStatusChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleStatusChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
         const newStatus = event.target.value as TaskStatus;
         setStatus(newStatus);
 
@@ -211,9 +240,12 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             newStatus === TASK_STATUSES.IN_PROGRESS ||
             newStatus === TASK_STATUSES.CANCELLED
         ) {
-            changeStatus(taskId, newStatus);
-            toast.success("Statut changé");
-            modal?.close();
+            const ok = await changeStatus(taskId, newStatus);
+            if (ok) {
+                modal?.close();
+            } else {
+                setStatus(realStatus);
+            }
         } else if (newStatus === TASK_STATUSES.DONE) {
             modal?.showModal();
         }
@@ -320,6 +352,57 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         }
     };
 
+    const handleRouteToUser = async () => {
+        if (!task || !selectedRoutingUserId) return;
+
+        try {
+            setIsSubmittingRouting(true);
+            await routeTaskToUser({
+                taskId: task.id,
+                targetUserId: selectedRoutingUserId,
+            });
+            await fetchInfos(task.id);
+            toast.success("Tâche redistribuée au membre.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsSubmittingRouting(false);
+        }
+    };
+
+    const handleRouteToSubteam = async () => {
+        if (!task || !selectedRoutingTeamId) return;
+
+        try {
+            setIsSubmittingRouting(true);
+            await routeTaskToSubteam({
+                taskId: task.id,
+                targetTeamId: selectedRoutingTeamId,
+            });
+            await fetchInfos(task.id);
+            toast.success("Tâche redistribuée à la sous-équipe.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsSubmittingRouting(false);
+        }
+    };
+
+    const handleClearRouting = async () => {
+        if (!task) return;
+
+        try {
+            setIsSubmittingRouting(true);
+            await clearTaskRouting({ taskId: task.id });
+            await fetchInfos(task.id);
+            toast.success("Redistribution retirée.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+        } finally {
+            setIsSubmittingRouting(false);
+        }
+    };
+
     useEffect(() => {
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
         if (modal) {
@@ -399,6 +482,58 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         </p>
                     </div>
 
+                    {task.team && (
+                        <div className="p-5 border border-base-300 rounded-xl mb-4">
+                            <h2 className="font-semibold text-lg mb-3">Redistribution opérationnelle</h2>
+
+                            {task.routing ? (
+                                <div className="space-y-2 text-sm">
+                                    <div>
+                                        <span className="opacity-70">Équipe racine responsable :</span>{" "}
+                                        {task.routing.rootTeam?.name || task.team.name}
+                                    </div>
+
+                                    {task.routing.targetType === "USER" && (
+                                        <div>
+                                            <span className="opacity-70">Redistribuée à :</span>{" "}
+                                            {task.routing.targetUser?.name || task.routing.targetUser?.email || "Utilisateur inconnu"}
+                                        </div>
+                                    )}
+
+                                    {task.routing.targetType === "SUBTEAM" && (
+                                        <div>
+                                            <span className="opacity-70">Redistribuée à la sous-équipe :</span>{" "}
+                                            {task.routing.targetTeam?.name || "Sous-équipe inconnue"}
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <span className="opacity-70">Redistribuée par :</span>{" "}
+                                        {task.routing.assignedBy?.name || task.routing.assignedBy?.email || "Utilisateur inconnu"}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-sm opacity-70">
+                                    Aucune redistribution active pour cette tâche.
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {canRedistributeTask && (
+                        <div className="flex justify-end mb-4">
+                            <button
+                                className="btn btn-primary btn-sm"
+                                onClick={() => {
+                                    const modal = document.getElementById("routing_modal") as HTMLDialogElement | null;
+                                    modal?.showModal();
+                                }}
+                            >
+                                Redistribuer la tâche
+                            </button>
+                        </div>
+                    )}
+
                     <div className='flex flex-wrap gap-2 mb-4'>
                         {task.priority && (
                             <div className={`badge text-xs
@@ -474,8 +609,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         <div className="flex flex-col items-end gap-2">
                             {!canUpdateStatus && (
                                 <span className="text-xs opacity-70">
-                                    Seuls l'assigné, le créateur de la tâche, le propriétaire du projet
-                                    ou un manager peuvent modifier le statut.
+                                    L'exécutant, le créateur de la tâche, le propriétaire du projet, un manager, le chef d'équipe responsable ou, selon le routage, les membres de la sous-équipe ciblée peuvent modifier le statut.
                                 </span>
                             )}
                             <select
@@ -849,6 +983,88 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                         {isCreatingMilestone ? "Création..." : "Créer"}
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    </dialog>
+
+                    <dialog id="routing_modal" className="modal">
+                        <div className="modal-box">
+                            <form method="dialog">
+                                <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+                            </form>
+
+                            <h3 className="font-bold text-lg mb-4">Redistribuer la tâche</h3>
+
+                            <div className="space-y-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="label">
+                                        <span className="label-text">Vers un membre</span>
+                                    </label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={selectedRoutingUserId}
+                                        onChange={(e) => setSelectedRoutingUserId(e.target.value)}
+                                    >
+                                        <option value="">Sélectionner un membre</option>
+                                        {routingEligibleMembers.map((member) => (
+                                            <option key={member.userId} value={member.userId}>
+                                                {member.user.name || member.user.email}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <div className="flex justify-end">
+                                        <button
+                                            className="btn btn-primary btn-sm"
+                                            disabled={isSubmittingRouting || !selectedRoutingUserId}
+                                            onClick={handleRouteToUser}
+                                        >
+                                            Redistribuer au membre
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="divider">ou</div>
+
+                                <div className="flex flex-col gap-2">
+                                    <label className="label">
+                                        <span className="label-text">Vers une sous-équipe</span>
+                                    </label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={selectedRoutingTeamId}
+                                        onChange={(e) => setSelectedRoutingTeamId(e.target.value)}
+                                    >
+                                        <option value="">Sélectionner une sous-équipe</option>
+                                        {availableSubteams.map((subteam) => (
+                                            <option key={subteam.id} value={subteam.id}>
+                                                {subteam.name}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <div className="flex justify-end">
+                                        <button
+                                            className="btn btn-primary btn-sm"
+                                            disabled={isSubmittingRouting || !selectedRoutingTeamId}
+                                            onClick={handleRouteToSubteam}
+                                        >
+                                            Redistribuer à la sous-équipe
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {task.routing && (
+                                    <div className="flex justify-end pt-2">
+                                        <button
+                                            className="btn btn-outline btn-sm"
+                                            disabled={isSubmittingRouting}
+                                            onClick={handleClearRouting}
+                                        >
+                                            Retirer la redistribution
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </dialog>

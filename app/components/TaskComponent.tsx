@@ -14,6 +14,13 @@ interface TaskProps {
 
 const TaskComponent: FC<TaskProps> = ({ task, index, canDelete = false, onDelete }) => {
 
+    const routingLabel =
+        task.routing?.targetType === "USER"
+            ? (task.routing.targetUser?.name || task.routing.targetUser?.email || "Utilisateur")
+            : task.routing?.targetType === "SUBTEAM"
+                ? `Sous-équipe : ${task.routing.targetTeam?.name || "Inconnue"}`
+                : null;
+
     const handleDeleteClick = () => {
         if (onDelete) {
             onDelete(task.id);
@@ -66,9 +73,21 @@ const TaskComponent: FC<TaskProps> = ({ task, index, canDelete = false, onDelete
                             Équipe responsable : {task.team.name}
                         </span>
                     )}
-                    {!task.user && task.team && (
+                    {!task.user && task.team && !task.routing && (
                         <span className="text-xs opacity-60 mt-1">
                             Aucun exécutant défini
+                        </span>
+                    )}
+
+                    {task.routing?.targetType === "SUBTEAM" && (
+                        <span className="text-xs opacity-70 mt-1">
+                            Redistribuée à la sous-équipe : {task.routing.targetTeam?.name || "Inconnue"}
+                        </span>
+                    )}
+
+                    {task.routing?.targetType === "USER" && !task.user && (
+                        <span className="text-xs opacity-70 mt-1">
+                            Redistribuée à : {task.routing.targetUser?.name || task.routing.targetUser?.email || "Utilisateur"}
                         </span>
                     )}
 
@@ -91,12 +110,24 @@ const TaskComponent: FC<TaskProps> = ({ task, index, canDelete = false, onDelete
             </td>
 
             <td>
-                <UserInfo
-                    role=""
-                    email={task.user?.email || null}
-                    name={task.user?.name || null}
-
-                />
+                {task.user ? (
+                    <UserInfo
+                        role=""
+                        email={task.user.email || null}
+                        name={task.user.name || null}
+                    />
+                ) : routingLabel ? (
+                    <div className="text-sm">
+                        <div className="font-medium">{routingLabel}</div>
+                        <div className="text-xs opacity-70">
+                            {task.routing?.targetType === "SUBTEAM"
+                                ? "Redistribution active"
+                                : "Exécutant routé"}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="text-sm opacity-70">Aucune assignation</div>
+                )}
             </td>
 
             <td>

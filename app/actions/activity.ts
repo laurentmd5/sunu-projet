@@ -2,14 +2,14 @@
 
 import prisma from "@/lib/prisma";
 import { assertProjectCapability } from "@/lib/project-capabilities";
-import { ActivityType } from "@prisma/client";
+import { ActivityType, Prisma } from "@prisma/client";
 
 interface CreateActivityLogParams {
     projectId: string;
     actorUserId: string;
     type: ActivityType;
     message: string;
-    metadata?: Record<string, any>;
+    metadata?: Prisma.InputJsonValue;
 }
 
 export async function createActivityLog(params: CreateActivityLogParams) {

@@ -71,6 +71,22 @@ enum TaskRoutingTargetType {
   SUBTEAM
 }
 
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_REVIEW_REQUESTED
+  TASK_ROUTED_TO_USER
+  TASK_ROUTED_TO_SUBTEAM
+  TASK_ROUTING_CLEARED
+  TASK_COMMENT_ADDED
+
+  MANAGER_ASSIGNED
+  VIEWER_INVITED
+  VIEWER_PERMISSIONS_UPDATED
+
+  MEETING_INVITED
+  MEETING_UPDATED
+}
+
 model User {
   id    String @id @default(uuid()) @db.VarChar(36)
   name  String
@@ -439,18 +455,19 @@ model MeetingParticipant {
 }
 
 model Notification {
-  id        String    @id @default(uuid()) @db.VarChar(36)
-  userId    String    @db.VarChar(36)
-  type      String    @db.VarChar(100)
-  title     String
-  message   String?
-  link      String?   @db.VarChar(255)
+  id        String           @id @default(uuid()) @db.VarChar(36)
+  userId    String           @db.VarChar(36)
+  type      NotificationType
+  title     String           @db.VarChar(160)
+  message   String?          @db.Text
+  link      String?          @db.VarChar(255)
   metadata  Json?
   readAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
+  @@index([userId, type, createdAt])
 }

@@ -6,6 +6,7 @@ import { assertTaskAccess, ActionError, assertCanCreateTask, assertCanAssignTask
 import { sendTaskAssignmentEmail } from "@/lib/email";
 import { TASK_STATUSES } from "@/lib/task-status";
 import { createActivityLog } from "./activity";
+import { createNotification, createNotifications } from "./notifications";
 import { normalizeTaskTags } from "@/lib/task-tags";
 import {
     createTaskSchema,
@@ -494,13 +495,20 @@ export async function createTask(input: {
         },
     });
 
+    let projectForNotification:
+        | {
+              id: string;
+              name: string;
+          }
+        | null = null;
+
     try {
         if (
             assignedUserEmail &&
             assignedUserId &&
             assignedUserId !== user.id
         ) {
-            const project = await prisma.project.findUnique({
+            projectForNotification = await prisma.project.findUnique({
                 where: { id: parsed.projectId },
                 select: {
                     id: true,
@@ -508,12 +516,12 @@ export async function createTask(input: {
                 },
             });
 
-            if (project) {
+            if (projectForNotification) {
                 await sendTaskAssignmentEmail({
                     to: assignedUserEmail,
                     assigneeName: assignedUserName,
-                    projectName: project.name,
-                    projectId: project.id,
+                    projectName: projectForNotification.name,
+                    projectId: projectForNotification.id,
                     taskName: newTask.name,
                     dueDate: newTask.dueDate,
                 });
@@ -523,15 +531,55 @@ export async function createTask(input: {
         console.error("Erreur lors de l'envoi de l'email d'assignation :", error);
     }
 
+    try {
+        if (
+            assignedUserId &&
+            assignedUserId !== user.id
+        ) {
+            if (!projectForNotification) {
+                projectForNotification = await prisma.project.findUnique({
+                    where: { id: parsed.projectId },
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                });
+            }
+
+            await createNotification({
+                userId: assignedUserId,
+                type: "TASK_ASSIGNED",
+                title: "Nouvelle tâche assignée",
+                message: projectForNotification
+                    ? `${user.name} vous a assigné la tâche "${newTask.name}" dans le projet "${projectForNotification.name}".`
+                    : `${user.name} vous a assigné la tâche "${newTask.name}".`,
+                metadata: {
+                    projectId: parsed.projectId,
+                    taskId: newTask.id,
+                    actorUserId: user.id,
+                    teamId: validatedTeamId ?? undefined,
+                },
+            });
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création de la notification d'assignation :",
+            error
+        );
+    }
+
     await createActivityLog({
         projectId: parsed.projectId,
         actorUserId: user.id,
         type: "TASK_CREATED",
-        message: assignedUserName && assignedUserId !== user.id
-            ? `${user.name} a créé la tâche "${newTask.name}" et l'a assignée à ${assignedUserName}.`
-            : `${user.name} a créé la tâche "${newTask.name}".`,
+        message:
+            assignedUserName && assignedUserId !== user.id
+                ? `${user.name} a créé la tâche "${newTask.name}" et l'a assignée à ${assignedUserName}.`
+                : `${user.name} a créé la tâche "${newTask.name}".`,
         metadata: {
+            projectId: parsed.projectId,
             taskId: newTask.id,
+            actorUserId: user.id,
             assignedUserId,
             teamId: validatedTeamId,
             milestoneId: validatedMilestoneId,
@@ -704,13 +752,45 @@ export async function sendTaskToReview(input: {
         type: "TASK_STATUS_UPDATED",
         message: `${user.name} a renvoyé la tâche "${taskWithTeam.name}" en revue.`,
         metadata: {
+            projectId: taskWithTeam.projectId,
             taskId: taskWithTeam.id,
             previousStatus: taskWithTeam.status,
             newStatus: TASK_STATUSES.IN_REVIEW,
             reviewFeedback: parsed.reviewFeedback,
             reviewedById: user.id,
+            actorUserId: user.id,
+            teamId: taskWithTeam.teamId ?? undefined,
         },
     });
+
+    try {
+        const notificationRecipientUserId =
+            taskWithTeam.userId && taskWithTeam.userId !== user.id
+                ? taskWithTeam.userId
+                : taskWithTeam.createdById !== user.id
+                    ? taskWithTeam.createdById
+                    : null;
+
+        if (notificationRecipientUserId) {
+            await createNotification({
+                userId: notificationRecipientUserId,
+                type: "TASK_REVIEW_REQUESTED",
+                title: "Tâche renvoyée en revue",
+                message: `${user.name} a renvoyé la tâche "${taskWithTeam.name}" en revue.`,
+                metadata: {
+                    projectId: taskWithTeam.projectId,
+                    taskId: taskWithTeam.id,
+                    actorUserId: user.id,
+                    teamId: taskWithTeam.teamId ?? undefined,
+                },
+            });
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création de la notification de revue :",
+            error
+        );
+    }
 
     return {
         success: true,
@@ -957,12 +1037,37 @@ export async function routeTaskToUser(input: {
         type: "TASK_ROUTED_TO_USER",
         message: `${user.name} a redistribué la tâche "${task.name}" à ${projectMembership.user.name || projectMembership.user.email}.`,
         metadata: {
+            projectId: task.projectId,
             taskId: task.id,
+            actorUserId: user.id,
             rootTeamId: rootTeam.id,
             targetUserId: parsed.targetUserId,
             routingType: "USER",
         },
     });
+
+    try {
+        if (parsed.targetUserId !== user.id) {
+            await createNotification({
+                userId: parsed.targetUserId,
+                type: "TASK_ROUTED_TO_USER",
+                title: "Tâche redistribuée",
+                message: `${user.name} vous a redistribué la tâche "${task.name}".`,
+                metadata: {
+                    projectId: task.projectId,
+                    taskId: task.id,
+                    actorUserId: user.id,
+                    teamId: rootTeam.id,
+                    routingType: "USER",
+                },
+            });
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création de la notification de redistribution utilisateur :",
+            error
+        );
+    }
 
     return {
         success: true,
@@ -1029,12 +1134,56 @@ export async function routeTaskToSubteam(input: {
         type: "TASK_ROUTED_TO_SUBTEAM",
         message: `${user.name} a redistribué la tâche "${task.name}" à la sous-équipe "${targetTeam.name}".`,
         metadata: {
+            projectId: task.projectId,
             taskId: task.id,
+            actorUserId: user.id,
             rootTeamId: rootTeam.id,
             targetTeamId: targetTeam.id,
             routingType: "SUBTEAM",
         },
     });
+
+    try {
+        const targetSubteamMembers = await prisma.teamMember.findMany({
+            where: {
+                teamId: targetTeam.id,
+                userId: {
+                    not: user.id,
+                },
+            },
+            select: {
+                userId: true,
+            },
+        });
+
+        const uniqueRecipientIds = Array.from(
+            new Set(targetSubteamMembers.map((member) => member.userId))
+        );
+
+        if (uniqueRecipientIds.length > 0) {
+            await createNotifications(
+                uniqueRecipientIds.map((recipientUserId) => ({
+                    userId: recipientUserId,
+                    type: "TASK_ROUTED_TO_SUBTEAM" as const,
+                    title: "Tâche redistribuée à votre sous-équipe",
+                    message: `${user.name} a redistribué la tâche "${task.name}" à la sous-équipe "${targetTeam.name}".`,
+                    metadata: {
+                        projectId: task.projectId,
+                        taskId: task.id,
+                        actorUserId: user.id,
+                        teamId: rootTeam.id,
+                        subteamId: targetTeam.id,
+                        routingType: "SUBTEAM" as const,
+                    },
+                }))
+            );
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création des notifications de redistribution sous-équipe :",
+            error
+        );
+    }
 
     return {
         success: true,
@@ -1084,10 +1233,82 @@ export async function clearTaskRouting(input: { taskId: string }) {
         type: "TASK_ROUTING_CLEARED",
         message: `${user.name} a retiré la redistribution de la tâche "${task.name}".`,
         metadata: {
+            projectId: task.projectId,
             taskId: task.id,
+            actorUserId: user.id,
             rootTeamId: rootTeam.id,
+            previousTargetUserId: existingRouting.targetUserId,
+            previousTargetTeamId: existingRouting.targetTeamId,
+            previousRoutingType: existingRouting.targetType,
         },
     });
+
+    try {
+        if (
+            existingRouting.targetType === "USER" &&
+            existingRouting.targetUserId &&
+            existingRouting.targetUserId !== user.id
+        ) {
+            await createNotification({
+                userId: existingRouting.targetUserId,
+                type: "TASK_ROUTING_CLEARED",
+                title: "Redistribution retirée",
+                message: `${user.name} a retiré la redistribution de la tâche "${task.name}".`,
+                metadata: {
+                    projectId: task.projectId,
+                    taskId: task.id,
+                    actorUserId: user.id,
+                    teamId: rootTeam.id,
+                    routingType: "USER",
+                },
+            });
+        }
+
+        if (
+            existingRouting.targetType === "SUBTEAM" &&
+            existingRouting.targetTeamId
+        ) {
+            const previousSubteamMembers = await prisma.teamMember.findMany({
+                where: {
+                    teamId: existingRouting.targetTeamId,
+                    userId: {
+                        not: user.id,
+                    },
+                },
+                select: {
+                    userId: true,
+                },
+            });
+
+            const uniqueRecipientIds = Array.from(
+                new Set(previousSubteamMembers.map((member) => member.userId))
+            );
+
+            if (uniqueRecipientIds.length > 0) {
+                await createNotifications(
+                    uniqueRecipientIds.map((recipientUserId) => ({
+                        userId: recipientUserId,
+                        type: "TASK_ROUTING_CLEARED" as const,
+                        title: "Redistribution retirée",
+                        message: `${user.name} a retiré la redistribution de la tâche "${task.name}".`,
+                        metadata: {
+                            projectId: task.projectId,
+                            taskId: task.id,
+                            actorUserId: user.id,
+                            teamId: rootTeam.id,
+                            subteamId: existingRouting.targetTeamId ?? undefined,
+                            routingType: "SUBTEAM" as const,
+                        },
+                    }))
+                );
+            }
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création des notifications de retrait de redistribution :",
+            error
+        );
+    }
 
     return {
         success: true,
@@ -1247,10 +1468,73 @@ export async function addTaskComment(input: {
         type: "TASK_COMMENT_ADDED",
         message: `${user.name} a ajouté un commentaire sur la tâche "${task.name}".`,
         metadata: {
+            projectId: task.projectId,
             taskId: task.id,
             commentId: comment.id,
+            actorUserId: user.id,
+            teamId: task.teamId ?? undefined,
         },
     });
+
+    try {
+        const taskWithRouting = await prisma.task.findUnique({
+            where: { id: task.id },
+            select: {
+                userId: true,
+                createdById: true,
+                routing: {
+                    select: {
+                        targetType: true,
+                        targetUserId: true,
+                    },
+                },
+            },
+        });
+
+        const recipientIds = new Set<string>();
+
+        if (taskWithRouting?.userId && taskWithRouting.userId !== user.id) {
+            recipientIds.add(taskWithRouting.userId);
+        }
+
+        if (
+            taskWithRouting?.createdById &&
+            taskWithRouting.createdById !== user.id
+        ) {
+            recipientIds.add(taskWithRouting.createdById);
+        }
+
+        if (
+            taskWithRouting?.routing?.targetType === "USER" &&
+            taskWithRouting.routing.targetUserId &&
+            taskWithRouting.routing.targetUserId !== user.id
+        ) {
+            recipientIds.add(taskWithRouting.routing.targetUserId);
+        }
+
+        if (recipientIds.size > 0) {
+            await createNotifications(
+                Array.from(recipientIds).map((recipientUserId) => ({
+                    userId: recipientUserId,
+                    type: "TASK_COMMENT_ADDED" as const,
+                    title: "Nouveau commentaire sur une tâche",
+                    message: `${user.name} a commenté la tâche "${task.name}".`,
+                    metadata: {
+                        projectId: task.projectId,
+                        taskId: task.id,
+                        commentId: comment.id,
+                        actorUserId: user.id,
+                        teamId: task.teamId ?? undefined,
+                    },
+                }))
+            );
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création des notifications de commentaire :",
+            error
+        );
+    }
 
     return {
         success: true,

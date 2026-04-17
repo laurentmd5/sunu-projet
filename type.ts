@@ -228,3 +228,41 @@ export type TeamMeeting = PrismaTeamMeeting & {
 
 export type TeamMeetingStatus = MeetingStatus;
 export type TeamMeetingProvider = MeetingProvider;
+
+export type NotificationType =
+    | "TASK_ASSIGNED"
+    | "TASK_REVIEW_REQUESTED"
+    | "TASK_ROUTED_TO_USER"
+    | "TASK_ROUTED_TO_SUBTEAM"
+    | "TASK_ROUTING_CLEARED"
+    | "TASK_COMMENT_ADDED"
+    | "MANAGER_ASSIGNED"
+    | "VIEWER_INVITED"
+    | "VIEWER_PERMISSIONS_UPDATED"
+    | "MEETING_INVITED"
+    | "MEETING_UPDATED";
+
+export type NotificationRoutingType = "USER" | "SUBTEAM";
+
+export type NotificationPayload = {
+    projectId?: string;
+    taskId?: string;
+    meetingId?: string;
+    teamId?: string;
+    subteamId?: string;
+    commentId?: string;
+    actorUserId?: string;
+    routingType?: NotificationRoutingType;
+};
+
+export type NotificationItem = {
+    id: string;
+    userId: string;
+    type: NotificationType;
+    title: string;
+    message: string | null;
+    link: string | null;
+    metadata: NotificationPayload | null;
+    readAt: Date | string | null;
+    createdAt: Date | string;
+};

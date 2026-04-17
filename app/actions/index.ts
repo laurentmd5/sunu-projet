@@ -80,3 +80,13 @@ export {
     createActivityLog,
     getProjectActivityLogs,
 } from "./activity";
+
+// Notifications
+export {
+    createNotification,
+    createNotifications,
+    getMyNotifications,
+    getUnreadNotificationsCount,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+} from "./notifications";

@@ -13,6 +13,9 @@ import {
     updateTaskManagementSchema,
     sendTaskToReviewSchema,
     addTaskCommentSchema,
+    routeTaskToUserSchema,
+    routeTaskToSubteamSchema,
+    clearTaskRoutingSchema,
 } from "@/lib/validations";
 
 async function assertUserAssignableWithinResponsibleTeam(
@@ -77,6 +80,298 @@ async function assertUserAssignableWithinResponsibleTeam(
         rootTeam,
         allowedTeamIds,
         membership,
+    };
+}
+
+async function getTaskRoutingContext(taskId: string, actorUserId: string) {
+    const task = await prisma.task.findUnique({
+        where: { id: taskId },
+        include: {
+            project: true,
+            team: true,
+        },
+    });
+
+    if (!task) {
+        throw new ActionError("Tâche introuvable.", 404);
+    }
+
+    if (!task.teamId || !task.team) {
+        throw new ActionError(
+            "Cette tâche n'est pas rattachée à une équipe responsable.",
+            400
+        );
+    }
+
+    if (task.team.parentId !== null) {
+        throw new ActionError(
+            "La redistribution n'est possible que pour une tâche portée par une équipe racine.",
+            400
+        );
+    }
+
+    const membership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId: actorUserId,
+                projectId: task.projectId,
+            },
+        },
+        select: {
+            role: true,
+        },
+    });
+
+    const isProjectOwner = task.project.createdById === actorUserId;
+    const isManager = membership?.role === "MANAGER";
+    const isRootTeamLead = task.team.leadUserId === actorUserId;
+
+    if (!isProjectOwner && !isManager && !isRootTeamLead) {
+        throw new ActionError(
+            "Vous n'êtes pas autorisé à redistribuer cette tâche.",
+            403
+        );
+    }
+
+    return {
+        task,
+        membership,
+        rootTeam: task.team,
+        isProjectOwner,
+        isManager,
+        isRootTeamLead,
+    };
+}
+
+async function assertUserEligibleForTaskRouting(
+    projectId: string,
+    userId: string,
+    rootTeamId: string
+) {
+    const rootTeam = await prisma.team.findUnique({
+        where: { id: rootTeamId },
+        select: {
+            id: true,
+            projectId: true,
+            parentId: true,
+            children: {
+                select: {
+                    id: true,
+                },
+            },
+        },
+    });
+
+    if (!rootTeam) {
+        throw new ActionError("Équipe racine introuvable.", 404);
+    }
+
+    if (rootTeam.projectId !== projectId) {
+        throw new ActionError(
+            "L'équipe racine n'appartient pas à ce projet.",
+            400
+        );
+    }
+
+    if (rootTeam.parentId !== null) {
+        throw new ActionError(
+            "La redistribution doit partir d'une équipe racine.",
+            400
+        );
+    }
+
+    const allowedTeamIds = [rootTeam.id, ...rootTeam.children.map((child) => child.id)];
+
+    const teamMembership = await prisma.teamMember.findFirst({
+        where: {
+            userId,
+            teamId: {
+                in: allowedTeamIds,
+            },
+        },
+        select: {
+            id: true,
+            teamId: true,
+        },
+    });
+
+    if (!teamMembership) {
+        throw new ActionError(
+            "L'utilisateur cible doit appartenir à l'équipe racine responsable ou à une de ses sous-équipes.",
+            400
+        );
+    }
+
+    const projectMembership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId,
+                projectId,
+            },
+        },
+        select: {
+            role: true,
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+    });
+
+    if (!projectMembership) {
+        throw new ActionError(
+            "L'utilisateur cible n'appartient pas au projet.",
+            400
+        );
+    }
+
+    if (projectMembership.role === "VIEWER") {
+        throw new ActionError(
+            "Un observateur ne peut pas devenir exécutant d'une tâche redistribuée.",
+            400
+        );
+    }
+
+    return {
+        rootTeam,
+        projectMembership,
+        teamMembership,
+        allowedTeamIds,
+    };
+}
+
+async function assertSubteamEligibleForTaskRouting(
+    projectId: string,
+    rootTeamId: string,
+    targetTeamId: string
+) {
+    const rootTeam = await prisma.team.findUnique({
+        where: { id: rootTeamId },
+        select: {
+            id: true,
+            projectId: true,
+            parentId: true,
+        },
+    });
+
+    if (!rootTeam) {
+        throw new ActionError("Équipe racine introuvable.", 404);
+    }
+
+    if (rootTeam.projectId !== projectId) {
+        throw new ActionError(
+            "L'équipe racine n'appartient pas à ce projet.",
+            400
+        );
+    }
+
+    if (rootTeam.parentId !== null) {
+        throw new ActionError(
+            "La redistribution doit partir d'une équipe racine.",
+            400
+        );
+    }
+
+    const targetTeam = await prisma.team.findUnique({
+        where: { id: targetTeamId },
+        select: {
+            id: true,
+            projectId: true,
+            parentId: true,
+            name: true,
+        },
+    });
+
+    if (!targetTeam) {
+        throw new ActionError("Sous-équipe cible introuvable.", 404);
+    }
+
+    if (targetTeam.projectId !== projectId) {
+        throw new ActionError(
+            "La sous-équipe cible n'appartient pas à ce projet.",
+            400
+        );
+    }
+
+    if (targetTeam.parentId !== rootTeam.id) {
+        throw new ActionError(
+            "La sous-équipe cible doit être rattachée à l'équipe racine responsable.",
+            400
+        );
+    }
+
+    return {
+        rootTeam,
+        targetTeam,
+    };
+}
+
+async function getTaskStatusPermissionContext(taskId: string, userId: string) {
+    const task = await prisma.task.findUnique({
+        where: { id: taskId },
+        include: {
+            project: true,
+            team: true,
+            routing: true,
+        },
+    });
+
+    if (!task) {
+        throw new ActionError("Tâche introuvable.", 404);
+    }
+
+    const membership = await prisma.projectUser.findUnique({
+        where: {
+            userId_projectId: {
+                userId,
+                projectId: task.projectId,
+            },
+        },
+        select: {
+            role: true,
+        },
+    });
+
+    const isProjectOwner = task.project.createdById === userId;
+    const isManager = membership?.role === "MANAGER";
+    const isCreator = task.createdById === userId;
+    const isDirectAssignee = task.userId === userId;
+    const isRootTeamLead = task.team?.leadUserId === userId;
+
+    let isMemberOfRoutedSubteam = false;
+
+    if (
+        task.routing &&
+        task.routing.targetType === "SUBTEAM" &&
+        task.routing.targetTeamId
+    ) {
+        const subteamMembership = await prisma.teamMember.findUnique({
+            where: {
+                teamId_userId: {
+                    teamId: task.routing.targetTeamId,
+                    userId,
+                },
+            },
+            select: {
+                id: true,
+            },
+        });
+
+        isMemberOfRoutedSubteam = !!subteamMembership;
+    }
+
+    return {
+        task,
+        membership,
+        isProjectOwner,
+        isManager,
+        isCreator,
+        isDirectAssignee,
+        isRootTeamLead,
+        isMemberOfRoutedSubteam,
     };
 }
 
@@ -306,6 +601,26 @@ export const getTaskDetails = async (taskId: string) => {
                 },
                 orderBy: {
                     createdAt: "asc",
+                },
+            },
+            routing: {
+                include: {
+                    rootTeam: true,
+                    targetUser: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                        },
+                    },
+                    targetTeam: true,
+                    assignedBy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                        },
+                    },
                 },
             },
         },
@@ -585,6 +900,201 @@ export async function updateTaskManagement(input: {
     };
 }
 
+export async function routeTaskToUser(input: {
+    taskId: string;
+    targetUserId: string;
+}) {
+    const parsed = routeTaskToUserSchema.parse(input);
+
+    const { user } = await assertTaskAccess(parsed.taskId);
+
+    const { task, rootTeam } = await getTaskRoutingContext(parsed.taskId, user.id);
+
+    const { projectMembership } = await assertUserEligibleForTaskRouting(
+        task.projectId,
+        parsed.targetUserId,
+        rootTeam.id
+    );
+
+    const routedTask = await prisma.$transaction(async (tx) => {
+        const routing = await tx.taskRouting.upsert({
+            where: {
+                taskId: task.id,
+            },
+            update: {
+                rootTeamId: rootTeam.id,
+                targetType: "USER",
+                targetUserId: parsed.targetUserId,
+                targetTeamId: null,
+                assignedById: user.id,
+            },
+            create: {
+                taskId: task.id,
+                rootTeamId: rootTeam.id,
+                targetType: "USER",
+                targetUserId: parsed.targetUserId,
+                targetTeamId: null,
+                assignedById: user.id,
+            },
+        });
+
+        const updatedTask = await tx.task.update({
+            where: { id: task.id },
+            data: {
+                userId: parsed.targetUserId,
+            },
+        });
+
+        return {
+            routing,
+            task: updatedTask,
+        };
+    });
+
+    await createActivityLog({
+        projectId: task.projectId,
+        actorUserId: user.id,
+        type: "TASK_ROUTED_TO_USER",
+        message: `${user.name} a redistribué la tâche "${task.name}" à ${projectMembership.user.name || projectMembership.user.email}.`,
+        metadata: {
+            taskId: task.id,
+            rootTeamId: rootTeam.id,
+            targetUserId: parsed.targetUserId,
+            routingType: "USER",
+        },
+    });
+
+    return {
+        success: true,
+        message: "La tâche a été redistribuée avec succès.",
+        task: routedTask.task,
+        routing: routedTask.routing,
+    };
+}
+
+export async function routeTaskToSubteam(input: {
+    taskId: string;
+    targetTeamId: string;
+}) {
+    const parsed = routeTaskToSubteamSchema.parse(input);
+
+    const { user } = await assertTaskAccess(parsed.taskId);
+
+    const { task, rootTeam } = await getTaskRoutingContext(parsed.taskId, user.id);
+
+    const { targetTeam } = await assertSubteamEligibleForTaskRouting(
+        task.projectId,
+        rootTeam.id,
+        parsed.targetTeamId
+    );
+
+    const routedTask = await prisma.$transaction(async (tx) => {
+        const routing = await tx.taskRouting.upsert({
+            where: {
+                taskId: task.id,
+            },
+            update: {
+                rootTeamId: rootTeam.id,
+                targetType: "SUBTEAM",
+                targetUserId: null,
+                targetTeamId: targetTeam.id,
+                assignedById: user.id,
+            },
+            create: {
+                taskId: task.id,
+                rootTeamId: rootTeam.id,
+                targetType: "SUBTEAM",
+                targetUserId: null,
+                targetTeamId: targetTeam.id,
+                assignedById: user.id,
+            },
+        });
+
+        const updatedTask = await tx.task.update({
+            where: { id: task.id },
+            data: {
+                userId: null,
+            },
+        });
+
+        return {
+            routing,
+            task: updatedTask,
+        };
+    });
+
+    await createActivityLog({
+        projectId: task.projectId,
+        actorUserId: user.id,
+        type: "TASK_ROUTED_TO_SUBTEAM",
+        message: `${user.name} a redistribué la tâche "${task.name}" à la sous-équipe "${targetTeam.name}".`,
+        metadata: {
+            taskId: task.id,
+            rootTeamId: rootTeam.id,
+            targetTeamId: targetTeam.id,
+            routingType: "SUBTEAM",
+        },
+    });
+
+    return {
+        success: true,
+        message: "La tâche a été redistribuée à la sous-équipe avec succès.",
+        task: routedTask.task,
+        routing: routedTask.routing,
+    };
+}
+
+export async function clearTaskRouting(input: { taskId: string }) {
+    const parsed = clearTaskRoutingSchema.parse(input);
+
+    const { user } = await assertTaskAccess(parsed.taskId);
+    const { task, rootTeam } = await getTaskRoutingContext(parsed.taskId, user.id);
+
+    const existingRouting = await prisma.taskRouting.findUnique({
+        where: {
+            taskId: task.id,
+        },
+    });
+
+    if (!existingRouting) {
+        throw new ActionError(
+            "Aucune redistribution active n'est définie pour cette tâche.",
+            400
+        );
+    }
+
+    await prisma.$transaction(async (tx) => {
+        await tx.taskRouting.delete({
+            where: {
+                taskId: task.id,
+            },
+        });
+
+        await tx.task.update({
+            where: { id: task.id },
+            data: {
+                userId: null,
+            },
+        });
+    });
+
+    await createActivityLog({
+        projectId: task.projectId,
+        actorUserId: user.id,
+        type: "TASK_ROUTING_CLEARED",
+        message: `${user.name} a retiré la redistribution de la tâche "${task.name}".`,
+        metadata: {
+            taskId: task.id,
+            rootTeamId: rootTeam.id,
+        },
+    });
+
+    return {
+        success: true,
+        message: "La redistribution a été retirée avec succès.",
+    };
+}
+
 export const updateTaskStatus = async (
     taskId: string,
     newStatus: "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "CANCELLED",
@@ -596,25 +1106,26 @@ export const updateTaskStatus = async (
         solutionDescription,
     });
 
-    const { user, task } = await assertTaskAccess(parsed.taskId);
+    const { user } = await assertTaskAccess(parsed.taskId);
 
-    const membership = await prisma.projectUser.findUnique({
-        where: {
-            userId_projectId: {
-                userId: user.id,
-                projectId: task.projectId,
-            },
-        },
-        select: {
-            role: true,
-        },
-    });
+    const {
+        task,
+        membership,
+        isProjectOwner,
+        isManager,
+        isCreator,
+        isDirectAssignee,
+        isRootTeamLead,
+        isMemberOfRoutedSubteam,
+    } = await getTaskStatusPermissionContext(parsed.taskId, user.id);
 
     const canUpdate =
-        task.userId === user.id ||
-        task.createdById === user.id ||
-        task.project.createdById === user.id ||
-        membership?.role === "MANAGER";
+        isDirectAssignee ||
+        isCreator ||
+        isProjectOwner ||
+        isManager ||
+        isRootTeamLead ||
+        isMemberOfRoutedSubteam;
 
     if (!canUpdate) {
         throw new ActionError("Vous n'êtes pas autorisé à modifier cette tâche.", 403);
@@ -627,19 +1138,10 @@ export const updateTaskStatus = async (
         );
     }
 
-    let isPrivileged =
-        task.project.createdById === user.id ||
-        membership?.role === "MANAGER";
-
-    if (task.teamId) {
-        const team = await prisma.team.findUnique({
-            where: { id: task.teamId },
-            select: { leadUserId: true },
-        });
-        if (team?.leadUserId === user.id) {
-            isPrivileged = true;
-        }
-    }
+    const isPrivileged =
+        isProjectOwner ||
+        isManager ||
+        isRootTeamLead;
 
     if (
         task.status === TASK_STATUSES.DONE &&

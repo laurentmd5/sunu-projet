@@ -62,12 +62,17 @@ export {
     updateTaskStatus,
     sendTaskToReview,
     addTaskComment,
+    routeTaskToUser,
+    routeTaskToSubteam,
+    clearTaskRouting,
 } from "./tasks";
 
 // Milestones
 export {
     createMilestone,
     getProjectMilestones,
+    updateMilestone,
+    deleteMilestone,
 } from "./milestones";
 
 // Activity

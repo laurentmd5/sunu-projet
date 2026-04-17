@@ -952,3 +952,374 @@ Cette étape a particulièrement touché :
 - `app/teams/[teamId]/page.tsx`
 - `app/components/navbar.tsx`
 
+
+---
+
+# 17. Avancement complémentaire — lot 5 migration du module Tâches vers la V2 consolidée (16/04/2026 → 17/04/2026)
+
+## 17.1 Objectif du lot traité
+
+Après la stabilisation du schéma V2, du noyau permissions et du module Équipes, un lot complémentaire a été mené pour finaliser la migration du module **Tâches** vers la cible métier V2.
+
+Ce lot a porté sur :
+
+- l’enrichissement complet du modèle `Task` ;
+- l’introduction des jalons et commentaires ;
+- la clarification de l’assignation V2 entre exécutant et équipe responsable ;
+- l’introduction du workflow de revue ;
+- la mise en place de la redistribution interne des tâches ;
+- l’alignement des permissions liées au chef d’équipe et aux sous-équipes ;
+- la remise en cohérence du front projet / tâche avec ces nouveaux comportements.
+
+## 17.2 Principes fonctionnels retenus
+
+### 17.2.1 Distinction entre responsabilité métier et exécution
+
+La cible V2 a été consolidée autour de la distinction suivante :
+
+- `teamId` sur `Task` représente l’**équipe racine responsable** ;
+- `userId` représente l’**exécutant courant** lorsqu’une personne est explicitement ciblée ;
+- la redistribution interne est portée par une structure dédiée et non par un détournement des champs existants.
+
+Cette distinction a permis de clarifier plusieurs cas d’usage :
+
+- tâche sans équipe responsable ;
+- tâche assignée à un individu ;
+- tâche assignée à une équipe racine ;
+- tâche assignée à un individu au sein d’une équipe ;
+- tâche redistribuée à une sous-équipe.
+
+### 17.2.2 Positionnement du chef d’équipe
+
+Le chef d’équipe n’a pas été introduit comme nouveau rôle projet global.
+
+Décision retenue :
+
+- le chef d’équipe reste une **responsabilité locale** portée par `Team.leadUserId` ;
+- il peut redistribuer une tâche portée par son équipe racine ;
+- il peut renvoyer une tâche en revue ;
+- il peut piloter le statut opérationnel d’une tâche portée par son équipe.
+
+### 17.2.3 Interprétation de la redistribution vers sous-équipe
+
+La redistribution vers une sous-équipe a été interprétée comme un ciblage collectif utile et non comme une simple étape intermédiaire sans effet.
+
+Décision retenue :
+
+- lorsqu’une tâche est redistribuée vers une sous-équipe, tous les membres de cette sous-équipe peuvent faire avancer le statut de la tâche ;
+- `task.userId` reste `null` tant qu’aucun exécutant individuel n’est désigné ;
+- la responsabilité métier reste portée par l’équipe racine d’origine.
+
+## 17.3 Enrichissement du schéma et des types
+
+Le schéma Prisma et les types TypeScript ont été enrichis afin de supporter le modèle tâche V2 complet.
+
+### 17.3.1 Enrichissement de `Task`
+
+Les champs suivants ont été intégrés ou stabilisés dans le modèle de tâche :
+
+- `priority` ;
+- `tags` ;
+- `milestoneId` ;
+- `teamId` ;
+- `reviewFeedback` ;
+- `reviewedById` ;
+- `reviewedAt`.
+
+Le statut tâche a été confirmé dans sa forme V2 finale :
+
+- `TODO`
+- `IN_PROGRESS`
+- `IN_REVIEW`
+- `DONE`
+- `CANCELLED`
+
+### 17.3.2 Nouvelles structures métier
+
+Les structures suivantes ont été mises en œuvre dans le modèle de données :
+
+- `Milestone` ;
+- `TaskComment` ;
+- `TaskRouting` ;
+- `TaskRoutingTargetType` avec :
+  - `USER`
+  - `SUBTEAM`.
+
+### 17.3.3 Activity logs enrichis
+
+L’`ActivityLog` a été enrichi pour mieux tracer les nouveaux comportements du domaine tâches.
+
+Les événements suivants ont notamment été activés côté runtime :
+
+- `TASK_COMMENT_ADDED` ;
+- `MILESTONE_CREATED` ;
+- `MILESTONE_UPDATED` ;
+- `MILESTONE_DELETED` ;
+- `TASK_ROUTED_TO_USER` ;
+- `TASK_ROUTED_TO_SUBTEAM` ;
+- `TASK_ROUTING_CLEARED`.
+
+## 17.4 Réalignement des validations partagées
+
+Le fichier `lib/validations.ts` a été enrichi afin de couvrir les nouveaux flux V2 liés aux tâches.
+
+### Schémas ajoutés ou consolidés
+
+- `taskPrioritySchema` ;
+- `taskTagsSchema` ;
+- `createTaskSchema` enrichi avec priorité, tags, équipe et jalon ;
+- `updateTaskManagementSchema` enrichi ;
+- `sendTaskToReviewSchema` ;
+- `addTaskCommentSchema` ;
+- `createMilestoneSchema` ;
+- `getProjectMilestonesSchema` ;
+- `updateMilestoneSchema` ;
+- `deleteMilestoneSchema` ;
+- `routeTaskToUserSchema` ;
+- `routeTaskToSubteamSchema` ;
+- `clearTaskRoutingSchema`.
+
+Cette étape a permis d’unifier la validation backend de l’ensemble des comportements du nouveau module Tâches.
+
+## 17.5 Réalignement des actions serveur `tasks`
+
+Le fichier `app/actions/tasks.ts` a été fortement révisé afin de porter la logique V2 consolidée.
+
+### 17.5.1 Création et gestion de tâche enrichies
+
+La création et la gestion des tâches ont été étendues pour supporter :
+
+- la priorité ;
+- les tags ;
+- l’équipe responsable ;
+- le jalon ;
+- l’assignation nullable ;
+- la date d’échéance nullable ;
+- la normalisation des tags ;
+- les métadonnées d’activité enrichies.
+
+Une contrainte métier importante a été ajoutée :
+
+- si un exécutant est défini en même temps qu’une équipe responsable, cet exécutant doit appartenir à l’équipe racine ou à l’une de ses sous-équipes.
+
+### 17.5.2 Détail de tâche
+
+`getTaskDetails()` a été enrichie afin de retourner l’ensemble des données utiles au nouveau front :
+
+- projet ;
+- créateur ;
+- exécutant ;
+- équipe responsable ;
+- jalon ;
+- commentaires avec auteur ;
+- information de revue ;
+- routing complet avec :
+  - équipe racine,
+  - utilisateur cible,
+  - sous-équipe cible,
+  - auteur de la redistribution.
+
+### 17.5.3 Workflow de revue
+
+Le workflow `DONE -> IN_REVIEW -> DONE` a été introduit pour permettre la validation intermédiaire d’une solution.
+
+Décisions retenues :
+
+- l’exécutant termine la tâche avec une solution ;
+- un responsable peut renvoyer la tâche en revue avec un retour explicite ;
+- l’exécutant peut ensuite proposer une nouvelle solution et remettre la tâche à l’état terminé ;
+- le passage vers `IN_REVIEW` est réservé à l’action dédiée `sendTaskToReview()`.
+
+### 17.5.4 Commentaires de tâche
+
+Le lot a introduit un premier niveau de commentaires via `TaskComment`.
+
+Évolutions apportées :
+
+- ajout de `addTaskComment()` ;
+- affichage chronologique des commentaires dans le détail tâche ;
+- interdiction de commentaire pour les `VIEWER` ;
+- traçabilité dédiée dans `ActivityLog`.
+
+### 17.5.5 Jalons
+
+Le domaine `Milestone` a été rendu opérationnel.
+
+Actions ajoutées ou stabilisées :
+
+- `createMilestone()` ;
+- `getProjectMilestones()` ;
+- `updateMilestone()` ;
+- `deleteMilestone()`.
+
+Comportements retenus :
+
+- seuls `OWNER` et `MANAGER` peuvent créer, modifier ou supprimer un jalon ;
+- une tâche peut être rattachée ou détachée d’un jalon à la création ou en gestion ;
+- les jalons sont visibles depuis la tâche et depuis le projet.
+
+### 17.5.6 Redistribution opérationnelle
+
+La redistribution interne a été introduite via `TaskRouting`.
+
+Actions ajoutées :
+
+- `routeTaskToUser()` ;
+- `routeTaskToSubteam()` ;
+- `clearTaskRouting()`.
+
+Règles mises en œuvre :
+
+- seule une tâche portée par une équipe racine peut être redistribuée ;
+- la redistribution vers un membre met à jour `task.userId` ;
+- la redistribution vers une sous-équipe vide `task.userId` ;
+- le retrait de redistribution nettoie le routing actif ;
+- l’équipe racine responsable reste inchangée ;
+- les `VIEWER` ne peuvent jamais devenir exécutants.
+
+## 17.6 Permissions et contrôles d’accès
+
+Une partie importante du lot a consisté à aligner les permissions avec la cible métier finale.
+
+### 17.6.1 Chef d’équipe
+
+Le rôle du chef d’équipe a été renforcé au niveau opérationnel.
+
+Évolutions apportées :
+
+- correction de `assertTaskAccess()` afin d’autoriser aussi le chef de l’équipe racine responsable ;
+- autorisation du chef d’équipe pour la redistribution ;
+- autorisation du chef d’équipe pour le renvoi en revue ;
+- autorisation du chef d’équipe pour le pilotage du statut opérationnel.
+
+### 17.6.2 Sous-équipe cible
+
+Le changement de statut a été réaligné pour refléter le sens métier d’une redistribution vers sous-équipe.
+
+Décision retenue :
+
+- lorsqu’une tâche est routée vers une sous-équipe, tout membre de cette sous-équipe peut faire avancer le statut ;
+- ce droit est validé côté backend, même si aucun exécutant individuel n’est désigné.
+
+### 17.6.3 Synthèse des acteurs autorisés à modifier le statut
+
+À l’issue du lot, les acteurs suivants peuvent modifier le statut selon les cas :
+
+- l’exécutant direct ;
+- le créateur de la tâche ;
+- le propriétaire du projet ;
+- le manager du projet ;
+- le chef de l’équipe racine responsable ;
+- un membre de la sous-équipe cible lorsqu’un routing actif de type `SUBTEAM` existe.
+
+## 17.7 Réalignement du front — création, détail et liste des tâches
+
+Le front a été remis en cohérence avec la sémantique V2.
+
+### 17.7.1 Création de tâche
+
+La page `/new-tasks/[projectId]` a été enrichie pour supporter :
+
+- le choix de la priorité ;
+- les tags ;
+- l’équipe responsable ;
+- le jalon ;
+- un vocabulaire clarifié entre :
+  - **exécutant**,
+  - **équipe responsable**.
+
+Une modal de création rapide de jalon a également été ajoutée pour fluidifier le rattachement dès la création de la tâche.
+
+### 17.7.2 Détail de tâche
+
+La page `/task-details/[taskId]` a été enrichie avec :
+
+- un bloc “Responsabilité” distinguant exécutant, équipe responsable et jalon ;
+- un bloc de revue ;
+- un bloc commentaires ;
+- un bloc de redistribution opérationnelle ;
+- une interface de redistribution vers membre ou sous-équipe ;
+- une interface de retrait de redistribution ;
+- une modal de gestion de tâche ;
+- une modal de création de jalon ;
+- une clarification du vocabulaire UI autour de l’assignation V2.
+
+### 17.7.3 Liste et filtres des tâches projet
+
+La section tâches du projet a été enrichie afin d’exploiter réellement le nouveau modèle.
+
+Évolutions apportées :
+
+- prise en compte de la priorité ;
+- prise en compte du jalon ;
+- prise en compte de l’équipe responsable ;
+- prise en compte de la redistribution ;
+- correction de l’affichage d’une tâche redistribuée à une sous-équipe ;
+- enrichissement des filtres ;
+- remplacement du filtre de statut par un dropdown plus lisible.
+
+## 17.8 Vérifications effectuées
+
+Les vérifications suivantes ont été menées au fil du lot :
+
+- builds `npm run build` exécutés avec succès après chaque étape sensible ;
+- validation de la création de tâche enrichie ;
+- validation de la gestion post-création des champs enrichis ;
+- validation du workflow de revue ;
+- validation des commentaires ;
+- validation des jalons :
+  - création,
+  - modification,
+  - suppression,
+  - rattachement,
+  - détachement ;
+- validation de la redistribution :
+  - vers membre,
+  - vers sous-équipe,
+  - retrait de redistribution ;
+- validation de la redistribution par chef d’équipe ;
+- validation du changement de statut par chef d’équipe ;
+- validation du changement de statut par membre d’une sous-équipe cible ;
+- validation des filtres enrichis de la section tâches ;
+- correction du double toast sur le changement de statut.
+
+## 17.9 Résultat obtenu
+
+À l’issue du lot 5, le module **Tâches** peut être considéré comme réaligné sur la V2 sur le périmètre traité.
+
+Les éléments suivants sont désormais stabilisés :
+
+- modèle `Task` enrichi ;
+- distinction claire entre exécutant et équipe responsable ;
+- workflow de revue ;
+- commentaires de tâche ;
+- jalons ;
+- redistribution interne des tâches ;
+- droits du chef d’équipe ;
+- droits des sous-équipes ciblées ;
+- affichage et filtrage cohérents côté projet et détail tâche.
+
+Ce lot clôture la partie principale du modèle tâche V2, en cohérence avec la hiérarchie d’équipes introduite précédemment.
+
+## 17.10 Fichiers particulièrement concernés par ce lot
+
+Cette étape a particulièrement touché :
+
+- `prisma/schema.prisma`
+- `type.ts`
+- `lib/validations.ts`
+- `lib/permissions.ts`
+- `lib/task-status.ts`
+- `lib/task-tags.ts`
+- `app/actions/tasks.ts`
+- `app/actions/milestones.ts`
+- `app/actions/activity.ts`
+- `app/actions/projects.ts`
+- `app/actions/index.ts`
+- `app/new-tasks/[projectId]/page.tsx`
+- `app/task-details/[taskId]/page.tsx`
+- `app/project/[projectId]/page.tsx`
+- `app/project/[projectId]/ProjectMilestonesTab.tsx`
+- `app/components/TaskComponent.tsx`
+- `app/project/[projectId]/ProjectMembersTab.tsx`
+- `Documentation_Migration_V1_V2.md`.

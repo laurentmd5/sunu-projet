@@ -9,6 +9,7 @@ import {
 } from "@/lib/permission-helpers";
 import { ViewerPermission } from "@/lib/permissions-core";
 import { createActivityLog } from "./activity";
+import { createNotification } from "./notifications";
 import { revalidatePath } from "next/cache";
 
 export async function getProjectUsers(idProject: string) {
@@ -145,7 +146,34 @@ export async function updateProjectMemberRole(
         actorUserId: currentUser.id,
         type: "MEMBER_ROLE_UPDATED",
         message: `${currentUser.name} a modifié le rôle de ${membership.user.name} : ${previousRole} → ${newRole}.`,
+        metadata: {
+            projectId,
+            actorUserId: currentUser.id,
+            targetUserId: memberUserId,
+            previousRole,
+            newRole,
+        },
     });
+
+    try {
+        if (newRole === "MANAGER" && memberUserId !== currentUser.id) {
+            await createNotification({
+                userId: memberUserId,
+                type: "MANAGER_ASSIGNED",
+                title: "Vous êtes désormais manager",
+                message: `${currentUser.name} vous a nommé manager sur ce projet.`,
+                metadata: {
+                    projectId,
+                    actorUserId: currentUser.id,
+                },
+            });
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création de la notification de nomination manager :",
+            error
+        );
+    }
 
     revalidatePath(`/project/${projectId}`);
 
@@ -215,7 +243,33 @@ export async function createProjectViewer(
         actorUserId: currentUser.id,
         type: "VIEWER_INVITED",
         message: `${currentUser.name} a ajouté ${viewerMembership.user.name} comme VIEWER.`,
+        metadata: {
+            projectId,
+            actorUserId: currentUser.id,
+            targetUserId: targetUser.id,
+            permissions: uniquePermissions,
+        },
     });
+
+    try {
+        if (targetUser.id !== currentUser.id) {
+            await createNotification({
+                userId: targetUser.id,
+                type: "VIEWER_INVITED",
+                title: "Accès observateur accordé",
+                message: `${currentUser.name} vous a ajouté comme observateur sur un projet.`,
+                metadata: {
+                    projectId,
+                    actorUserId: currentUser.id,
+                },
+            });
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création de la notification viewer :",
+            error
+        );
+    }
 
     revalidatePath(`/project/${projectId}`);
 
@@ -282,7 +336,33 @@ export async function updateViewerPermissions(
         actorUserId: currentUser.id,
         type: "VIEWER_PERMISSIONS_UPDATED",
         message: `${currentUser.name} a mis à jour les permissions viewer de ${viewerMembership.user.name}.`,
+        metadata: {
+            projectId,
+            actorUserId: currentUser.id,
+            targetUserId: viewerUserId,
+            permissions: uniquePermissions,
+        },
     });
+
+    try {
+        if (viewerUserId !== currentUser.id) {
+            await createNotification({
+                userId: viewerUserId,
+                type: "VIEWER_PERMISSIONS_UPDATED",
+                title: "Permissions observateur mises à jour",
+                message: `${currentUser.name} a mis à jour vos permissions observateur sur un projet.`,
+                metadata: {
+                    projectId,
+                    actorUserId: currentUser.id,
+                },
+            });
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de la création de la notification de mise à jour viewer :",
+            error
+        );
+    }
 
     revalidatePath(`/project/${projectId}`);
 
@@ -334,6 +414,12 @@ export async function removeProjectMember(projectId: string, memberUserId: strin
         actorUserId: currentUser.id,
         type: "MEMBER_REMOVED",
         message: `${currentUser.name} a retiré ${membership.user.name} du projet.`,
+        metadata: {
+            projectId,
+            actorUserId: currentUser.id,
+            targetUserId: memberUserId,
+            removedRole: membership.role,
+        },
     });
 
     revalidatePath(`/project/${projectId}`);

@@ -20,6 +20,7 @@ import {
     Users,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 
@@ -112,6 +113,8 @@ function getNotificationTypeIcon(type: NotificationType) {
 }
 
 const NotificationBell = () => {
+    const router = useRouter();
+
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [markingAll, setMarkingAll] = useState(false);
@@ -172,6 +175,13 @@ const NotificationBell = () => {
     }, [notifications]);
 
     const handleToggle = async () => {
+        const isMobile = window.innerWidth < 640;
+
+        if (isMobile) {
+            router.push("/notifications");
+            return;
+        }
+
         const nextOpen = !open;
         setOpen(nextOpen);
 
@@ -284,7 +294,7 @@ const NotificationBell = () => {
             </button>
 
             {open && (
-                <div className="absolute right-0 mt-2 w-[24rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-base-300 bg-base-100 shadow-xl z-50">
+                <div className="hidden sm:block absolute right-0 mt-2 w-[24rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-base-300 bg-base-100 shadow-xl z-50">
                     <div className="flex items-center justify-between p-4 border-b border-base-300">
                         <div>
                             <h3 className="font-semibold">Notifications</h3>

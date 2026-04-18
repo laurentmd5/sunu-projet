@@ -6,18 +6,108 @@ import {
     markAllNotificationsAsRead,
     markNotificationAsRead,
 } from "@/app/actions";
-import { NotificationItem } from "@/type";
-import { Bell, CheckCheck } from "lucide-react";
+import { NotificationItem, NotificationType } from "@/type";
+import {
+    Bell,
+    CheckCheck,
+    ClipboardCheck,
+    Eye,
+    FolderKanban,
+    MessageSquare,
+    Route,
+    ShieldCheck,
+    Users,
+} from "lucide-react";
 import Link from "next/link";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 
 function formatNotificationDate(value: Date | string) {
     const date = new Date(value);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+
+    if (diffMs < minute) {
+        return "À l’instant";
+    }
+
+    if (diffMs < hour) {
+        const minutes = Math.floor(diffMs / minute);
+        return `Il y a ${minutes} min`;
+    }
+
+    if (diffMs < day) {
+        const hours = Math.floor(diffMs / hour);
+        return `Il y a ${hours} h`;
+    }
+
+    if (diffMs < 7 * day) {
+        const days = Math.floor(diffMs / day);
+        return `Il y a ${days} j`;
+    }
+
     return new Intl.DateTimeFormat("fr-FR", {
         dateStyle: "short",
         timeStyle: "short",
     }).format(date);
+}
+
+function getNotificationTypeLabel(type: NotificationType) {
+    switch (type) {
+        case "TASK_ASSIGNED":
+            return "Tâche assignée";
+        case "TASK_REVIEW_REQUESTED":
+            return "Revue demandée";
+        case "TASK_ROUTED_TO_USER":
+            return "Redistribution vers membre";
+        case "TASK_ROUTED_TO_SUBTEAM":
+            return "Redistribution vers sous-équipe";
+        case "TASK_ROUTING_CLEARED":
+            return "Redistribution retirée";
+        case "TASK_COMMENT_ADDED":
+            return "Commentaire";
+        case "MANAGER_ASSIGNED":
+            return "Nomination manager";
+        case "VIEWER_INVITED":
+            return "Accès observateur";
+        case "VIEWER_PERMISSIONS_UPDATED":
+            return "Permissions observateur";
+        case "MEETING_INVITED":
+            return "Invitation réunion";
+        case "MEETING_UPDATED":
+            return "Réunion mise à jour";
+        default:
+            return "Notification";
+    }
+}
+
+function getNotificationTypeIcon(type: NotificationType) {
+    switch (type) {
+        case "TASK_ASSIGNED":
+            return <ClipboardCheck className="w-4 h-4" />;
+        case "TASK_REVIEW_REQUESTED":
+            return <Eye className="w-4 h-4" />;
+        case "TASK_ROUTED_TO_USER":
+        case "TASK_ROUTED_TO_SUBTEAM":
+        case "TASK_ROUTING_CLEARED":
+            return <Route className="w-4 h-4" />;
+        case "TASK_COMMENT_ADDED":
+            return <MessageSquare className="w-4 h-4" />;
+        case "MANAGER_ASSIGNED":
+            return <ShieldCheck className="w-4 h-4" />;
+        case "VIEWER_INVITED":
+        case "VIEWER_PERMISSIONS_UPDATED":
+            return <Users className="w-4 h-4" />;
+        case "MEETING_INVITED":
+        case "MEETING_UPDATED":
+            return <FolderKanban className="w-4 h-4" />;
+        default:
+            return <Bell className="w-4 h-4" />;
+    }
 }
 
 const NotificationBell = () => {
@@ -52,7 +142,7 @@ const NotificationBell = () => {
     };
 
     useEffect(() => {
-        loadNotifications();
+        void loadNotifications();
     }, []);
 
     useEffect(() => {
@@ -73,6 +163,13 @@ const NotificationBell = () => {
         };
     }, [open]);
 
+    const sortedNotifications = useMemo(() => {
+        return [...notifications].sort(
+            (a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+    }, [notifications]);
+
     const handleToggle = async () => {
         const nextOpen = !open;
         setOpen(nextOpen);
@@ -84,6 +181,14 @@ const NotificationBell = () => {
 
     const handleMarkOneAsRead = async (notificationId: string) => {
         try {
+            const targetNotification = notifications.find(
+                (notification) => notification.id === notificationId
+            );
+
+            if (!targetNotification || targetNotification.readAt) {
+                return;
+            }
+
             await markNotificationAsRead(notificationId);
 
             setNotifications((prev) =>
@@ -136,7 +241,7 @@ const NotificationBell = () => {
             <button
                 type="button"
                 className="btn btn-sm btn-ghost relative"
-                onClick={handleToggle}
+                onClick={() => void handleToggle()}
                 aria-label="Ouvrir les notifications"
             >
                 <Bell className="w-4 h-4" />
@@ -148,7 +253,7 @@ const NotificationBell = () => {
             </button>
 
             {open && (
-                <div className="absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-base-300 bg-base-100 shadow-xl z-50">
+                <div className="absolute right-0 mt-2 w-[24rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-base-300 bg-base-100 shadow-xl z-50">
                     <div className="flex items-center justify-between p-4 border-b border-base-300">
                         <div>
                             <h3 className="font-semibold">Notifications</h3>
@@ -160,7 +265,7 @@ const NotificationBell = () => {
                         <button
                             type="button"
                             className="btn btn-ghost btn-xs"
-                            onClick={handleMarkAllAsRead}
+                            onClick={() => void handleMarkAllAsRead()}
                             disabled={markingAll || unreadCount === 0}
                         >
                             <CheckCheck className="w-3 h-3" />
@@ -171,13 +276,13 @@ const NotificationBell = () => {
                     <div className="max-h-[28rem] overflow-y-auto">
                         {loading ? (
                             <div className="p-4 text-sm opacity-70">Chargement...</div>
-                        ) : notifications.length === 0 ? (
+                        ) : sortedNotifications.length === 0 ? (
                             <div className="p-4 text-sm opacity-70">
                                 Aucune notification pour le moment.
                             </div>
                         ) : (
                             <div className="flex flex-col">
-                                {notifications.map((notification) => {
+                                {sortedNotifications.map((notification) => {
                                     const isUnread = !notification.readAt;
 
                                     const content = (
@@ -186,8 +291,18 @@ const NotificationBell = () => {
                                                 isUnread ? "bg-base-200/60" : "bg-base-100"
                                             } hover:bg-base-200`}
                                         >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="min-w-0">
+                                            <div className="flex items-start gap-3">
+                                                <div
+                                                    className={`mt-0.5 shrink-0 rounded-full p-2 ${
+                                                        isUnread
+                                                            ? "bg-primary/15 text-primary"
+                                                            : "bg-base-200 text-base-content/70"
+                                                    }`}
+                                                >
+                                                    {getNotificationTypeIcon(notification.type)}
+                                                </div>
+
+                                                <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-2">
                                                         <p className="font-medium text-sm truncate">
                                                             {notification.title}
@@ -197,8 +312,12 @@ const NotificationBell = () => {
                                                         )}
                                                     </div>
 
+                                                    <p className="text-[11px] uppercase tracking-wide opacity-60 mt-1">
+                                                        {getNotificationTypeLabel(notification.type)}
+                                                    </p>
+
                                                     {notification.message && (
-                                                        <p className="text-sm opacity-80 mt-1 line-clamp-2">
+                                                        <p className="text-sm opacity-80 mt-2 line-clamp-2">
                                                             {notification.message}
                                                         </p>
                                                     )}
@@ -245,6 +364,16 @@ const NotificationBell = () => {
                                 })}
                             </div>
                         )}
+                    </div>
+
+                    <div className="p-3 border-t border-base-300">
+                        <Link
+                            href="/"
+                            className="btn btn-ghost btn-sm w-full"
+                            onClick={() => setOpen(false)}
+                        >
+                            Fermer
+                        </Link>
                     </div>
                 </div>
             )}

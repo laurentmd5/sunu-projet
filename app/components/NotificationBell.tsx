@@ -368,11 +368,11 @@ const NotificationBell = () => {
 
                     <div className="p-3 border-t border-base-300">
                         <Link
-                            href="/"
+                            href="/notifications"
                             className="btn btn-ghost btn-sm w-full"
                             onClick={() => setOpen(false)}
                         >
-                            Fermer
+                            Voir toutes les notifications
                         </Link>
                     </div>
                 </div>

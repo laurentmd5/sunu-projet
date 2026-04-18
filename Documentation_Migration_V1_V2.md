@@ -1323,3 +1323,457 @@ Cette étape a particulièrement touché :
 - `app/components/TaskComponent.tsx`
 - `app/project/[projectId]/ProjectMembersTab.tsx`
 - `Documentation_Migration_V1_V2.md`.
+
+
+---
+
+# 18. Avancement complémentaire — lot 6 notifications in-app (17/04/2026 → 18/04/2026)
+
+## 18.1 Objectif du lot traité
+
+Après la stabilisation du schéma V2, du noyau permissions, du module Équipes et du module Tâches, un lot complémentaire a été mené pour rendre le système de **notifications in-app** réellement opérationnel sur les domaines déjà les plus avancés de la V2.
+
+Ce lot a porté sur :
+
+- la consolidation du modèle `Notification` introduit par la V2 ;
+- l’introduction d’un backend dédié de création, lecture et marquage des notifications ;
+- le branchement progressif des notifications sur les événements métier déjà disponibles ;
+- la coexistence entre emails transactionnels existants et notifications in-app ;
+- l’introduction d’une première UI de consultation dans la navbar ;
+- l’ajout d’une page dédiée `/notifications` ;
+- l’amélioration de l’expérience utilisateur sur desktop et mobile ;
+- la préparation de l’extension future vers le module Réunions V2.
+
+## 18.2 Principes fonctionnels retenus
+
+### 18.2.1 Distinction entre audit projet et notification utilisateur
+
+La cible V2 a été consolidée autour de la distinction suivante :
+
+- `ActivityLog` reste le support de **traçabilité projet** ;
+- `Notification` devient le support de **notification in-app par utilisateur**.
+
+Cette distinction a permis de conserver une séparation claire entre :
+
+- l’historique métier visible au niveau projet ;
+- l’alerte contextuelle reçue individuellement par un utilisateur.
+
+### 18.2.2 Coexistence avec les emails transactionnels
+
+Décision retenue :
+
+- les emails transactionnels existants sont conservés ;
+- les notifications in-app sont ajoutées en parallèle ;
+- l’email n’est pas remplacé brutalement par la notification.
+
+Cette règle a été appliquée en priorité sur l’assignation de tâche :
+
+- l’email Resend historique reste envoyé ;
+- une notification `TASK_ASSIGNED` est désormais créée en parallèle.
+
+### 18.2.3 Déploiement progressif par domaine métier
+
+Le lot a été volontairement déployé par étapes afin de limiter les régressions.
+
+Ordre retenu :
+
+- socle technique `Notification` ;
+- notifications liées au domaine Tâches ;
+- notifications liées au domaine Projet / rôles / VIEWER ;
+- consultation utilisateur ;
+- raffinements UX ;
+- préparation de l’extension future vers les Réunions.
+
+## 18.3 Évolutions du schéma et des types
+
+Le schéma Prisma et les types TypeScript ont été enrichis afin de rendre le module notifications réellement exploitable.
+
+### 18.3.1 Modèle `Notification`
+
+Le modèle `Notification` a été consolidé avec les champs suivants :
+
+- `userId` ;
+- `type` ;
+- `title` ;
+- `message` ;
+- `link` ;
+- `metadata` ;
+- `readAt` ;
+- `createdAt`.
+
+### 18.3.2 Enum `NotificationType`
+
+Le type libre initial a été remplacé par un enum Prisma dédié.
+
+Les types stabilisés dans ce lot sont :
+
+- `TASK_ASSIGNED`
+- `TASK_REVIEW_REQUESTED`
+- `TASK_ROUTED_TO_USER`
+- `TASK_ROUTED_TO_SUBTEAM`
+- `TASK_ROUTING_CLEARED`
+- `TASK_COMMENT_ADDED`
+- `MANAGER_ASSIGNED`
+- `VIEWER_INVITED`
+- `VIEWER_PERMISSIONS_UPDATED`
+- `MEETING_INVITED`
+- `MEETING_UPDATED`
+
+### 18.3.3 Index et structure de consultation
+
+Le modèle a été enrichi avec des index adaptés à la consultation utilisateur :
+
+- index par `userId, createdAt` ;
+- index par `userId, readAt` ;
+- index par `userId, type, createdAt`.
+
+### 18.3.4 Types partagés
+
+Les types front et back ont été mis à jour afin d’exposer :
+
+- `NotificationType` ;
+- `NotificationPayload` ;
+- `NotificationItem` ;
+- `NotificationRoutingType`.
+
+Le payload de notification a été structuré pour transporter notamment :
+
+- `projectId` ;
+- `taskId` ;
+- `meetingId` ;
+- `teamId` ;
+- `subteamId` ;
+- `commentId` ;
+- `actorUserId` ;
+- `routingType`.
+
+## 18.4 Backend notifications dédié
+
+Un module serveur dédié a été introduit pour centraliser le comportement des notifications.
+
+### 18.4.1 Fichier dédié
+
+Le fichier `app/actions/notifications.ts` a été ajouté.
+
+### 18.4.2 Capacités introduites
+
+Ce module permet désormais de :
+
+- créer une notification unitaire ;
+- créer plusieurs notifications en lot ;
+- construire un lien profond cohérent selon le type de notification ;
+- lire les notifications de l’utilisateur courant ;
+- obtenir le compteur de notifications non lues ;
+- marquer une notification comme lue ;
+- marquer une notification comme non lue ;
+- marquer toutes les notifications comme lues.
+
+### 18.4.3 Exports d’actions
+
+`app/actions/index.ts` a été enrichi afin d’exposer les nouvelles actions de notifications au front.
+
+## 18.5 Branches métier activées — domaine Tâches
+
+Le lot a d’abord été branché sur le domaine Tâches, déjà le plus riche en événements métier.
+
+### 18.5.1 Assignation de tâche
+
+Lors de la création d’une tâche avec assignation :
+
+- l’email transactionnel historique continue d’être envoyé ;
+- une notification `TASK_ASSIGNED` est créée pour l’exécutant cible ;
+- un lien profond vers la fiche tâche est généré.
+
+### 18.5.2 Renvoi en revue
+
+L’action `sendTaskToReview()` a été enrichie afin de produire une notification `TASK_REVIEW_REQUESTED`.
+
+Destinataire retenu :
+
+- exécutant courant si pertinent ;
+- sinon créateur de tâche selon le contexte.
+
+### 18.5.3 Redistribution vers un membre
+
+L’action `routeTaskToUser()` produit désormais :
+
+- le log projet correspondant ;
+- une notification `TASK_ROUTED_TO_USER` pour l’utilisateur cible.
+
+### 18.5.4 Redistribution vers une sous-équipe
+
+L’action `routeTaskToSubteam()` produit désormais :
+
+- le log projet correspondant ;
+- des notifications `TASK_ROUTED_TO_SUBTEAM` pour les membres de la sous-équipe cible.
+
+### 18.5.5 Retrait de redistribution
+
+L’action `clearTaskRouting()` produit désormais :
+
+- le log projet correspondant ;
+- une notification `TASK_ROUTING_CLEARED` pour les anciens destinataires concernés.
+
+### 18.5.6 Commentaires
+
+L’action `addTaskComment()` a été enrichie afin de produire une notification `TASK_COMMENT_ADDED`.
+
+Destinataires retenus :
+
+- exécutant courant ;
+- créateur ;
+- cible utilisateur d’un éventuel routing actif ;
+
+avec exclusion systématique de l’auteur du commentaire.
+
+## 18.6 Branches métier activées — domaine Projet / rôles / VIEWER
+
+Le lot a ensuite été étendu au domaine projet déjà stabilisé au lot 3.
+
+### 18.6.1 Nomination manager
+
+L’action `updateProjectMemberRole()` a été enrichie afin de créer une notification `MANAGER_ASSIGNED` lorsque la cible devient manager.
+
+### 18.6.2 Création d’un viewer
+
+L’action `createProjectViewer()` crée désormais une notification `VIEWER_INVITED` pour l’utilisateur ajouté comme observateur.
+
+### 18.6.3 Mise à jour des permissions viewer
+
+L’action `updateViewerPermissions()` crée désormais une notification `VIEWER_PERMISSIONS_UPDATED` pour le viewer concerné.
+
+## 18.7 Enrichissement de la traçabilité
+
+Le lot a également servi à réaligner `ActivityLog.metadata` avec les nouveaux usages.
+
+### 18.7.1 Objectif
+
+L’objectif n’était pas de fusionner activité et notification, mais de :
+
+- mieux contextualiser les événements ;
+- aligner les liens profonds avec les ressources métier ;
+- améliorer la cohérence entre audit projet et navigation utilisateur.
+
+### 18.7.2 Métadonnées enrichies
+
+Les métadonnées portent désormais plus systématiquement, selon les cas :
+
+- `projectId` ;
+- `taskId` ;
+- `commentId` ;
+- `teamId` ;
+- `rootTeamId` ;
+- `targetUserId` ;
+- `targetTeamId` ;
+- `actorUserId` ;
+- les transitions de rôle ou de statut.
+
+## 18.8 Réalignement du front — navbar et dropdown
+
+La première UI de consultation des notifications a été ajoutée dans la navigation principale.
+
+### 18.8.1 Cloche notifications
+
+Un composant `NotificationBell` a été introduit dans la navbar.
+
+Capacités apportées :
+
+- compteur de non lues ;
+- ouverture du centre de notifications rapide ;
+- lecture des dernières notifications ;
+- marquage lu / non lu depuis l’UI ;
+- action “Tout lire”.
+
+### 18.8.2 Première version du dropdown
+
+Le dropdown desktop a été introduit comme accès rapide aux notifications récentes avec :
+
+- titre ;
+- message ;
+- date ;
+- état lu / non lu ;
+- lien profond vers la ressource concernée.
+
+### 18.8.3 Retrait du doublon de navigation
+
+Un lien “Notifications” avait d’abord été ajouté à la navbar, puis retiré.
+
+Décision retenue :
+
+- la cloche devient le point d’entrée principal du centre de notifications ;
+- la redondance avec un onglet de navigation classique a été supprimée.
+
+## 18.9 Page dédiée `/notifications`
+
+Le lot a ensuite dépassé la simple cloche navbar avec l’ajout d’une vraie page de consultation.
+
+### 18.9.1 Objectif
+
+Créer une page dédiée permettant :
+
+- de consulter davantage de notifications ;
+- de travailler sur le statut lu / non lu ;
+- de filtrer les notifications ;
+- d’améliorer l’usage sur mobile.
+
+### 18.9.2 Capacités ajoutées
+
+La page `/notifications` permet désormais :
+
+- l’affichage d’une liste étendue de notifications ;
+- l’action “Marquer comme lue” ;
+- l’action “Marquer comme non lue” ;
+- l’action “Tout marquer comme lu” ;
+- l’ouverture de la ressource liée ;
+- le filtrage par état :
+  - `Toutes`
+  - `Non lues`
+- le filtrage par catégorie :
+  - `Tous types`
+  - `Tâches`
+  - `Projet`
+  - `Réunions`
+
+### 18.9.3 Combinaison des filtres
+
+Les filtres ont été conçus pour être combinables, par exemple :
+
+- `Non lues + Tâches`
+- `Toutes + Projet`
+- `Toutes + Réunions`
+
+## 18.10 Raffinements UX
+
+Une phase de polish a été menée sur la cloche et la page dédiée.
+
+### 18.10.1 Lisibilité métier
+
+Les notifications affichent désormais :
+
+- un libellé métier plus clair selon le type ;
+- une icône dédiée par type ;
+- une date plus lisible au format relatif ;
+- une distinction visuelle plus nette entre lu et non lu.
+
+### 18.10.2 Cycle complet lu / non lu
+
+Le lot a complété le cycle de vie d’une notification :
+
+- lecture ;
+- marquage lu ;
+- marquage non lu ;
+- tout marquer comme lu.
+
+Cette évolution a été branchée à la fois :
+
+- dans le dropdown navbar ;
+- sur la page `/notifications`.
+
+## 18.11 Responsive / mobile
+
+Une anomalie responsive a été identifiée sur téléphone.
+
+### 18.11.1 Problème constaté
+
+Le dropdown notifications, conçu d’abord pour desktop, s’ouvrait mal lorsqu’il était rendu dans le menu mobile plein écran :
+
+- panneau tronqué ;
+- débordement horizontal ;
+- affichage non exploitable.
+
+### 18.11.2 Correction retenue
+
+La logique responsive a été revue avec la règle suivante :
+
+- sur desktop : la cloche ouvre un dropdown ;
+- sur mobile : la cloche redirige vers la page `/notifications`.
+
+Cette solution permet :
+
+- d’éviter les débordements ;
+- de conserver une UX simple ;
+- de réutiliser la page dédiée comme centre de notifications mobile.
+
+## 18.12 Réunions — préparation et report
+
+Le lot a également préparé la suite du chantier sans forcer une implémentation incomplète.
+
+### 18.12.1 Types prévus
+
+Les types suivants sont déjà présents dans le modèle notifications :
+
+- `MEETING_INVITED`
+- `MEETING_UPDATED`
+
+### 18.12.2 Décision retenue
+
+L’activation réelle des notifications réunions a été volontairement reportée.
+
+Raison :
+
+- le modèle Réunions V2 n’était pas encore suffisamment stabilisé/testable ;
+- il était préférable de ne pas empiler du code difficile à valider dans l’immédiat.
+
+## 18.13 Vérifications effectuées
+
+Les vérifications suivantes ont été menées au fil du lot :
+
+- builds `npm run build` exécutés avec succès après chaque étape sensible ;
+- validation de la création des notifications en base ;
+- validation des liens profonds générés ;
+- validation des notifications tâches :
+  - assignation ;
+  - revue ;
+  - redistribution vers membre ;
+  - redistribution vers sous-équipe ;
+  - retrait de redistribution ;
+  - commentaire ;
+- validation des notifications projet :
+  - nomination manager ;
+  - création viewer ;
+  - mise à jour permissions viewer ;
+- validation du compteur de non lues ;
+- validation du marquage comme lue ;
+- validation du marquage comme non lue ;
+- validation du marquage global comme lu ;
+- validation du dropdown navbar ;
+- validation de la page `/notifications` ;
+- validation des filtres par état ;
+- validation des filtres par catégorie ;
+- validation du comportement responsive mobile après correction.
+
+## 18.14 Résultat obtenu
+
+À l’issue du lot 6, le module **Notifications in-app** peut être considéré comme stabilisé sur le périmètre déjà actif de la V2.
+
+Les éléments suivants sont désormais considérés comme en place :
+
+- modèle Prisma `Notification` consolidé ;
+- backend notifications dédié ;
+- notifications liées au domaine Tâches ;
+- notifications liées au domaine Projet / rôles / VIEWER ;
+- coexistence avec les emails transactionnels existants ;
+- cloche navbar opérationnelle ;
+- page dédiée `/notifications` ;
+- cycle complet lu / non lu ;
+- filtrage par état et catégorie ;
+- comportement responsive corrigé.
+
+Ce lot constitue une avancée importante dans la concrétisation de la cible V2, en rendant le système plus vivant et plus exploitable au quotidien par les utilisateurs.
+
+## 18.15 Fichiers particulièrement concernés par ce lot
+
+Cette étape a particulièrement touché :
+
+- `prisma/schema.prisma`
+- `type.ts`
+- `app/actions/activity.ts`
+- `app/actions/tasks.ts`
+- `app/actions/members.ts`
+- `app/actions/notifications.ts`
+- `app/actions/index.ts`
+- `app/components/Navbar.tsx`
+- `app/components/NotificationBell.tsx`
+- `app/notifications/page.tsx`
+- `lib/email.ts`
+- `Documentation_Migration_V1_V2.md`

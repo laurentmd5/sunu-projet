@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, CalendarDays, FolderKanban, Menu, X } from "lucide-react";
+import { CalendarDays, FolderKanban, Menu, X } from "lucide-react";
 import React, { useState } from "react";
 import LocalLogoutButton from "./LocalLogoutButton";
 import LocalUserBadge from "./LocalUserBadge";
@@ -16,7 +16,6 @@ const Navbar = () => {
         { href: "/meetings", label: "Réunions", icon: <CalendarDays className="w-4 h-4" /> },
         { href: "/general-projects", label: "Collaborations", icon: null },
         { href: "/", label: "Mes projets", icon: null },
-        { href: "/notifications", label: "Notifications", icon: <Bell className="w-4 h-4" /> },
     ];
 
     const isActiveLink = (href: string) =>

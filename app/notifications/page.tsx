@@ -25,7 +25,8 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
-type NotificationFilter = "ALL" | "UNREAD";
+type NotificationReadFilter = "ALL" | "UNREAD";
+type NotificationCategoryFilter = "ALL" | "TASKS" | "PROJECT" | "MEETINGS";
 
 function formatNotificationDate(value: Date | string) {
     const date = new Date(value);
@@ -37,7 +38,7 @@ function formatNotificationDate(value: Date | string) {
     const day = 24 * hour;
 
     if (diffMs < minute) {
-        return "À l'instant";
+        return "À l’instant";
     }
 
     if (diffMs < hour) {
@@ -115,12 +116,40 @@ function getNotificationTypeIcon(type: NotificationType) {
     }
 }
 
+function isTaskNotification(type: NotificationType) {
+    return [
+        "TASK_ASSIGNED",
+        "TASK_REVIEW_REQUESTED",
+        "TASK_ROUTED_TO_USER",
+        "TASK_ROUTED_TO_SUBTEAM",
+        "TASK_ROUTING_CLEARED",
+        "TASK_COMMENT_ADDED",
+    ].includes(type);
+}
+
+function isProjectNotification(type: NotificationType) {
+    return [
+        "MANAGER_ASSIGNED",
+        "VIEWER_INVITED",
+        "VIEWER_PERMISSIONS_UPDATED",
+    ].includes(type);
+}
+
+function isMeetingNotification(type: NotificationType) {
+    return [
+        "MEETING_INVITED",
+        "MEETING_UPDATED",
+    ].includes(type);
+}
+
 export default function NotificationsPage() {
     const [loading, setLoading] = useState(true);
     const [markingAll, setMarkingAll] = useState(false);
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
-    const [filter, setFilter] = useState<NotificationFilter>("ALL");
+    const [readFilter, setReadFilter] = useState<NotificationReadFilter>("ALL");
+    const [categoryFilter, setCategoryFilter] =
+        useState<NotificationCategoryFilter>("ALL");
 
     const loadNotifications = async () => {
         try {
@@ -154,12 +183,22 @@ export default function NotificationsPage() {
                 new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
 
-        if (filter === "UNREAD") {
-            return sorted.filter((notification) => !notification.readAt);
-        }
+        return sorted.filter((notification) => {
+            const matchesReadFilter =
+                readFilter === "ALL" || !notification.readAt;
 
-        return sorted;
-    }, [notifications, filter]);
+            const matchesCategoryFilter =
+                categoryFilter === "ALL" ||
+                (categoryFilter === "TASKS" &&
+                    isTaskNotification(notification.type)) ||
+                (categoryFilter === "PROJECT" &&
+                    isProjectNotification(notification.type)) ||
+                (categoryFilter === "MEETINGS" &&
+                    isMeetingNotification(notification.type));
+
+            return matchesReadFilter && matchesCategoryFilter;
+        });
+    }, [notifications, readFilter, categoryFilter]);
 
     const handleMarkOneAsRead = async (notificationId: string) => {
         try {
@@ -264,9 +303,9 @@ export default function NotificationsPage() {
                         <button
                             type="button"
                             className={`btn btn-sm ${
-                                filter === "ALL" ? "btn-primary" : "btn-ghost"
+                                readFilter === "ALL" ? "btn-primary" : "btn-ghost"
                             }`}
-                            onClick={() => setFilter("ALL")}
+                            onClick={() => setReadFilter("ALL")}
                         >
                             Toutes
                         </button>
@@ -274,9 +313,9 @@ export default function NotificationsPage() {
                         <button
                             type="button"
                             className={`btn btn-sm ${
-                                filter === "UNREAD" ? "btn-primary" : "btn-ghost"
+                                readFilter === "UNREAD" ? "btn-primary" : "btn-ghost"
                             }`}
-                            onClick={() => setFilter("UNREAD")}
+                            onClick={() => setReadFilter("UNREAD")}
                         >
                             Non lues
                         </button>
@@ -293,6 +332,48 @@ export default function NotificationsPage() {
                     </div>
                 </div>
 
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${
+                            categoryFilter === "ALL" ? "btn-outline btn-primary" : "btn-ghost"
+                        }`}
+                        onClick={() => setCategoryFilter("ALL")}
+                    >
+                        Tous types
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${
+                            categoryFilter === "TASKS" ? "btn-outline btn-primary" : "btn-ghost"
+                        }`}
+                        onClick={() => setCategoryFilter("TASKS")}
+                    >
+                        Tâches
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${
+                            categoryFilter === "PROJECT" ? "btn-outline btn-primary" : "btn-ghost"
+                        }`}
+                        onClick={() => setCategoryFilter("PROJECT")}
+                    >
+                        Projet
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${
+                            categoryFilter === "MEETINGS" ? "btn-outline btn-primary" : "btn-ghost"
+                        }`}
+                        onClick={() => setCategoryFilter("MEETINGS")}
+                    >
+                        Réunions
+                    </button>
+                </div>
+
                 {loading ? (
                     <div className="p-6 border border-base-300 rounded-2xl">
                         <p className="text-sm opacity-70">Chargement...</p>
@@ -301,19 +382,16 @@ export default function NotificationsPage() {
                     <EmptyState
                         imageSrc="/empty-task.png"
                         imageAlt="Aucune notification"
-                        message={
-                            filter === "UNREAD"
-                                ? "Aucune notification non lue"
-                                : "Aucune notification pour le moment"
-                        }
+                        message="Aucune notification pour les filtres sélectionnés"
                     />
                 ) : (
                     <div className="flex flex-col gap-4">
                         {filteredNotifications.map((notification) => {
                             const isUnread = !notification.readAt;
 
-                            const cardContent = (
+                            return (
                                 <div
+                                    key={notification.id}
                                     className={`border rounded-2xl p-4 transition-colors ${
                                         isUnread
                                             ? "border-primary/30 bg-base-200/50"
@@ -404,12 +482,6 @@ export default function NotificationsPage() {
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            );
-
-                            return (
-                                <div key={notification.id}>
-                                    {cardContent}
                                 </div>
                             );
                         })}

@@ -5,6 +5,7 @@ import {
     getUnreadNotificationsCount,
     markAllNotificationsAsRead,
     markNotificationAsRead,
+    markNotificationAsUnread,
 } from "@/app/actions";
 import EmptyState from "@/app/components/EmptyState";
 import Wrapper from "@/app/components/Wrapper";
@@ -190,6 +191,36 @@ export default function NotificationsPage() {
         }
     };
 
+    const handleMarkOneAsUnread = async (notificationId: string) => {
+        try {
+            const targetNotification = notifications.find(
+                (notification) => notification.id === notificationId
+            );
+
+            if (!targetNotification || !targetNotification.readAt) {
+                return;
+            }
+
+            await markNotificationAsUnread(notificationId);
+
+            setNotifications((prev) =>
+                prev.map((notification) =>
+                    notification.id === notificationId
+                        ? { ...notification, readAt: null }
+                        : notification
+                )
+            );
+
+            setUnreadCount((prev) => prev + 1);
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Impossible de marquer la notification comme non lue."
+            );
+        }
+    };
+
     const handleMarkAllAsRead = async () => {
         try {
             setMarkingAll(true);
@@ -349,7 +380,7 @@ export default function NotificationsPage() {
                                                     </Link>
                                                 ) : null}
 
-                                                {isUnread && (
+                                                {isUnread ? (
                                                     <button
                                                         type="button"
                                                         className="btn btn-sm btn-ghost"
@@ -358,6 +389,16 @@ export default function NotificationsPage() {
                                                         }
                                                     >
                                                         Marquer comme lue
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-ghost"
+                                                        onClick={() =>
+                                                            void handleMarkOneAsUnread(notification.id)
+                                                        }
+                                                    >
+                                                        Marquer comme non lue
                                                     </button>
                                                 )}
                                             </div>

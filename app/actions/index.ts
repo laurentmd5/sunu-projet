@@ -88,5 +88,6 @@ export {
     getMyNotifications,
     getUnreadNotificationsCount,
     markNotificationAsRead,
+    markNotificationAsUnread,
     markAllNotificationsAsRead,
 } from "./notifications";

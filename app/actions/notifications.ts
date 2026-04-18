@@ -188,6 +188,46 @@ export async function markNotificationAsRead(notificationId: string) {
     };
 }
 
+export async function markNotificationAsUnread(notificationId: string) {
+    const user = await getCurrentDbUser();
+
+    if (!notificationId?.trim()) {
+        throw new ActionError("Notification invalide.", 400);
+    }
+
+    const notification = await prisma.notification.findUnique({
+        where: { id: notificationId },
+        select: {
+            id: true,
+            userId: true,
+            readAt: true,
+        },
+    });
+
+    if (!notification || notification.userId !== user.id) {
+        throw new ActionError("Notification introuvable.", 404);
+    }
+
+    if (!notification.readAt) {
+        return {
+            success: true,
+            message: "Notification déjà non lue.",
+        };
+    }
+
+    await prisma.notification.update({
+        where: { id: notificationId },
+        data: {
+            readAt: null,
+        },
+    });
+
+    return {
+        success: true,
+        message: "Notification marquée comme non lue.",
+    };
+}
+
 export async function markAllNotificationsAsRead() {
     const user = await getCurrentDbUser();
 

@@ -5,6 +5,7 @@ import {
     getUnreadNotificationsCount,
     markAllNotificationsAsRead,
     markNotificationAsRead,
+    markNotificationAsUnread,
 } from "@/app/actions";
 import { NotificationItem, NotificationType } from "@/type";
 import {
@@ -209,6 +210,36 @@ const NotificationBell = () => {
         }
     };
 
+    const handleMarkOneAsUnread = async (notificationId: string) => {
+        try {
+            const targetNotification = notifications.find(
+                (notification) => notification.id === notificationId
+            );
+
+            if (!targetNotification || !targetNotification.readAt) {
+                return;
+            }
+
+            await markNotificationAsUnread(notificationId);
+
+            setNotifications((prev) =>
+                prev.map((notification) =>
+                    notification.id === notificationId
+                        ? { ...notification, readAt: null }
+                        : notification
+                )
+            );
+
+            setUnreadCount((prev) => prev + 1);
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Impossible de marquer la notification comme non lue."
+            );
+        }
+    };
+
     const handleMarkAllAsRead = async () => {
         try {
             setMarkingAll(true);
@@ -322,9 +353,37 @@ const NotificationBell = () => {
                                                         </p>
                                                     )}
 
-                                                    <p className="text-xs opacity-60 mt-2">
-                                                        {formatNotificationDate(notification.createdAt)}
-                                                    </p>
+                                                    <div className="flex items-center justify-between gap-2 mt-2">
+                                                        <p className="text-xs opacity-60">
+                                                            {formatNotificationDate(notification.createdAt)}
+                                                        </p>
+
+                                                        {isUnread ? (
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-ghost btn-xs"
+                                                                onClick={(event) => {
+                                                                    event.preventDefault();
+                                                                    event.stopPropagation();
+                                                                    void handleMarkOneAsRead(notification.id);
+                                                                }}
+                                                            >
+                                                                Marquer lue
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-ghost btn-xs"
+                                                                onClick={(event) => {
+                                                                    event.preventDefault();
+                                                                    event.stopPropagation();
+                                                                    void handleMarkOneAsUnread(notification.id);
+                                                                }}
+                                                            >
+                                                                Marquer non lue
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

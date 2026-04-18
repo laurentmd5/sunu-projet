@@ -20,7 +20,7 @@ import {
     Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 
@@ -114,6 +114,7 @@ function getNotificationTypeIcon(type: NotificationType) {
 
 const NotificationBell = () => {
     const router = useRouter();
+    const pathname = usePathname();
 
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -145,9 +146,22 @@ const NotificationBell = () => {
         }
     };
 
+    const loadUnreadCount = async () => {
+        try {
+            const count = await getUnreadNotificationsCount();
+            setUnreadCount(count);
+        } catch (error) {
+            console.error("Erreur lors du chargement du compteur notifications :", error);
+        }
+    };
+
     useEffect(() => {
         void loadNotifications();
     }, []);
+
+    useEffect(() => {
+        void loadUnreadCount();
+    }, [pathname]);
 
     useEffect(() => {
         if (!open) return;

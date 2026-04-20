@@ -5,11 +5,13 @@ import Wrapper from "@/app/components/Wrapper";
 import {
     addMeetingRecording,
     generateJitsiMeetingLink,
+    getEligibleMeetingParticipants,
     getMeetingDetails,
     regenerateJitsiMeetingLink,
     removeMeetingRecording,
     removeMeetingVideoLink,
     updateMeetingNotes,
+    updateMeetingParticipants,
     updateMeetingStatus,
 } from "@/app/actions";
 import { MeetingRecording, TeamMeeting } from "@/type";
@@ -28,6 +30,7 @@ import {
     Trash2,
     Video,
     UsersRound,
+    UserPlus,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import Link from "next/link";
@@ -49,6 +52,13 @@ const PROVIDER_LABELS = {
     JITSI: "Jitsi",
 } as const;
 
+type EligibleMeetingParticipant = {
+    id: string;
+    name: string | null;
+    email: string;
+    role: "OWNER" | "MANAGER" | "VIEWER" | "MEMBER";
+};
+
 const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const [meetingId, setMeetingId] = useState("");
     const [meeting, setMeeting] = useState<TeamMeeting | null>(null);
@@ -66,12 +76,34 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const [addingRecording, setAddingRecording] = useState(false);
     const [removingRecordingId, setRemovingRecordingId] = useState<string | null>(null);
 
+    const [eligibleParticipants, setEligibleParticipants] = useState<EligibleMeetingParticipant[]>([]);
+    const [selectedParticipantUserIds, setSelectedParticipantUserIds] = useState<string[]>([]);
+    const [savingParticipants, setSavingParticipants] = useState(false);
+
+    const fetchEligibleParticipants = async (id: string) => {
+        try {
+            const data = await getEligibleMeetingParticipants(id);
+            setEligibleParticipants(data as EligibleMeetingParticipant[]);
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Erreur lors du chargement des participants éligibles."
+            );
+        }
+    };
+
     const fetchMeeting = async (id: string) => {
         try {
             setLoading(true);
             const data = await getMeetingDetails(id);
-            setMeeting(data as TeamMeeting);
-            setNotes((data as TeamMeeting).notes || "");
+            const typedMeeting = data as TeamMeeting;
+
+            setMeeting(typedMeeting);
+            setNotes(typedMeeting.notes || "");
+            setSelectedParticipantUserIds(
+                (typedMeeting.participants || []).map((participant) => participant.userId)
+            );
         } catch (error) {
             toast.error(
                 error instanceof Error
@@ -87,7 +119,11 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
         const init = async () => {
             const resolved = await params;
             setMeetingId(resolved.meetingId);
-            fetchMeeting(resolved.meetingId);
+
+            await Promise.all([
+                fetchMeeting(resolved.meetingId),
+                fetchEligibleParticipants(resolved.meetingId),
+            ]);
         };
 
         init();
@@ -263,6 +299,35 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
         }
     };
 
+    const handleToggleParticipant = (userId: string) => {
+        setSelectedParticipantUserIds((prev) =>
+            prev.includes(userId)
+                ? prev.filter((id) => id !== userId)
+                : [...prev, userId]
+        );
+    };
+
+    const handleSaveParticipants = async () => {
+        if (!meetingId || !canManageMeeting) return;
+
+        try {
+            setSavingParticipants(true);
+
+            await updateMeetingParticipants(meetingId, selectedParticipantUserIds);
+            await fetchMeeting(meetingId);
+
+            toast.success("Participants mis à jour.");
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Erreur lors de la mise à jour des participants."
+            );
+        } finally {
+            setSavingParticipants(false);
+        }
+    };
+
     if (loading) {
         return (
             <Wrapper>
@@ -286,7 +351,9 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const isCancelled = meeting.status === "CANCELLED";
     const hasVideoLink = Boolean(meeting.externalUrl);
     const recordings = meeting.meetingRecordings || [];
-    const canManageMeeting = meeting.currentUserTeamRole === "OWNER";
+    const canManageMeeting =
+        meeting.currentUserTeamRole === "OWNER" ||
+        meeting.currentUserTeamRole === "MANAGER";
 
     return (
         <Wrapper>
@@ -376,6 +443,88 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                         <p className="text-sm break-words">{meeting.description}</p>
                     </div>
                 ) : null}
+
+                <div className="rounded-xl border border-base-300 p-4 md:p-5 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                        <UsersRound className="w-4 h-4" />
+                        <h2 className="text-lg font-semibold">Participants explicites</h2>
+                    </div>
+
+                    <p className="text-sm opacity-70 mb-4">
+                        Cette liste représente les personnes explicitement invitées à la réunion.
+                    </p>
+
+                    {meeting.participants && meeting.participants.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 mb-5">
+                            {meeting.participants.map((participant) => (
+                                <div
+                                    key={participant.id}
+                                    className="badge badge-outline gap-2 py-3 px-3"
+                                >
+                                    <span className="font-medium">
+                                        {participant.user.name || participant.user.email}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm opacity-70 mb-5">
+                            Aucun participant explicite n'a encore été défini.
+                        </p>
+                    )}
+
+                    {canManageMeeting ? (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {eligibleParticipants.map((participant) => {
+                                    const checked = selectedParticipantUserIds.includes(participant.id);
+
+                                    return (
+                                        <label
+                                            key={participant.id}
+                                            className="flex items-start gap-3 rounded-lg border border-base-300 p-3 cursor-pointer hover:bg-base-200"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="checkbox checkbox-sm mt-1"
+                                                checked={checked}
+                                                onChange={() => handleToggleParticipant(participant.id)}
+                                            />
+
+                                            <div className="min-w-0">
+                                                <p className="font-medium break-words">
+                                                    {participant.name || participant.email}
+                                                </p>
+                                                <p className="text-sm opacity-70 break-all">
+                                                    {participant.email}
+                                                </p>
+                                                <p className="text-xs opacity-60 mt-1">
+                                                    Rôle : {participant.role}
+                                                </p>
+                                            </div>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="mt-4 flex justify-end">
+                                <button
+                                    type="button"
+                                    className="btn btn-primary w-full sm:w-auto"
+                                    onClick={handleSaveParticipants}
+                                    disabled={savingParticipants}
+                                >
+                                    <UserPlus className="w-4 h-4" />
+                                    Mettre à jour les participants
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-xs opacity-60">
+                            Seuls les propriétaires et managers peuvent modifier les participants.
+                        </p>
+                    )}
+                </div>
 
                 <div className="rounded-xl border border-base-300 p-4 md:p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-3">

@@ -51,6 +51,8 @@ export {
     generateJitsiMeetingLink,
     regenerateJitsiMeetingLink,
     removeMeetingVideoLink,
+    getEligibleMeetingParticipants,
+    updateMeetingParticipants,
 } from "./meetings";
 
 // Tasks

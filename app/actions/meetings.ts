@@ -994,3 +994,50 @@ export async function updateMeetingParticipants(
     meeting: updatedMeeting,
   };
 }
+
+export async function getEligibleMeetingParticipants(meetingId: string) {
+  const ctx = await assertCanReadMeeting(meetingId);
+
+  const members = await prisma.projectUser.findMany({
+    where: {
+      projectId: ctx.projectId,
+    },
+    select: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      role: true,
+      viewerPermissionGrants: {
+        select: {
+          permission: true,
+        },
+      },
+    },
+    orderBy: {
+      user: {
+        name: "asc",
+      },
+    },
+  });
+
+  return members
+    .filter((member) => {
+      if (member.role !== "VIEWER") {
+        return true;
+      }
+
+      return member.viewerPermissionGrants.some(
+        (grant) => grant.permission === "JOIN_MEETINGS"
+      );
+    })
+    .map((member) => ({
+      id: member.user.id,
+      name: member.user.name,
+      email: member.user.email,
+      role: member.role,
+    }));
+}

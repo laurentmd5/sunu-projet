@@ -65,33 +65,40 @@ const updateMeetingNotesSchema = z.object({
 });
 
 const updateMeetingStatusSchema = z.object({
-    meetingId: z.string().trim().min(1, "Réunion invalide."),
-    status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED"]),
+  meetingId: z.string().trim().min(1, "Réunion invalide."),
+  status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED"]),
 });
 
 const addMeetingRecordingSchema = z.object({
-    meetingId: z.string().trim().min(1, "Réunion invalide."),
-    title: z
-        .string()
-        .trim()
-        .min(2, "Le titre doit contenir au moins 2 caractères.")
-        .max(120, "Le titre est trop long."),
-    url: z
-        .string()
-        .trim()
-        .url("Lien d'enregistrement invalide."),
-    description: z
-        .string()
-        .trim()
-        .max(2000, "La description est trop longue.")
-        .optional()
-        .or(z.literal("")),
+  meetingId: z.string().trim().min(1, "Réunion invalide."),
+  title: z
+    .string()
+    .trim()
+    .min(2, "Le titre doit contenir au moins 2 caractères.")
+    .max(120, "Le titre est trop long."),
+  url: z
+    .string()
+    .trim()
+    .url("Lien d'enregistrement invalide."),
+  description: z
+    .string()
+    .trim()
+    .max(2000, "La description est trop longue.")
+    .optional()
+    .or(z.literal("")),
+});
+
+const updateMeetingParticipantsSchema = z.object({
+  meetingId: z.string().trim().min(1, "Réunion invalide."),
+  participantUserIds: z
+    .array(z.string().trim().min(1, "Participant invalide."))
+    .max(100, "Trop de participants."),
 });
 
 function normalizeOptionalString(value?: string | null) {
-    if (!value) return null;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function slugify(value: string) {
@@ -194,6 +201,52 @@ async function notifyMeetingParticipants(params: {
     } catch (error) {
         console.error("Erreur lors de la création des notifications réunion :", error);
     }
+}
+
+async function notifyNewMeetingParticipants(params: {
+  newParticipantUserIds: string[];
+  actorUserId: string;
+  meetingTitle: string;
+  meetingId: string;
+  teamId: string;
+  projectId?: string | null;
+  actorName?: string | null;
+}) {
+  const recipientIds = Array.from(
+    new Set(
+      params.newParticipantUserIds.filter(
+        (userId) => userId && userId !== params.actorUserId
+      )
+    )
+  );
+
+  if (!recipientIds.length) {
+    return;
+  }
+
+  try {
+    await createNotifications(
+      recipientIds.map((userId) => ({
+        userId,
+        type: "MEETING_INVITED",
+        title: "Invitation à une réunion",
+        message: `${
+          params.actorName ?? "Un collaborateur"
+        } vous a ajouté à la réunion "${params.meetingTitle}".`,
+        metadata: {
+          projectId: params.projectId ?? undefined,
+          meetingId: params.meetingId,
+          teamId: params.teamId,
+          actorUserId: params.actorUserId,
+        },
+      }))
+    );
+  } catch (error) {
+    console.error(
+      "Erreur lors de la création des notifications de nouveaux participants :",
+      error
+    );
+  }
 }
 
 export async function createMeeting(input: {
@@ -800,5 +853,144 @@ export async function removeMeetingRecording(recordingId: string) {
   return {
     success: true,
     message: "Enregistrement supprimé avec succès.",
+  };
+}
+
+export async function updateMeetingParticipants(
+  meetingId: string,
+  participantUserIds: string[]
+) {
+  const parsed = updateMeetingParticipantsSchema.parse({
+    meetingId,
+    participantUserIds,
+  });
+
+  const user = await getCurrentDbUser();
+  const ctx = await assertCanManageMeeting(parsed.meetingId);
+
+  const uniqueParticipantUserIds = await assertParticipantsEligibleForMeeting(
+    ctx.teamId,
+    ctx.projectId,
+    parsed.participantUserIds
+  );
+
+  const existingParticipants = await prisma.meetingParticipant.findMany({
+    where: { meetingId: parsed.meetingId },
+    select: { userId: true },
+  });
+
+  const existingUserIds = new Set(existingParticipants.map((p) => p.userId));
+  const nextUserIds = new Set(uniqueParticipantUserIds);
+
+  const userIdsToAdd = uniqueParticipantUserIds.filter(
+    (userId) => !existingUserIds.has(userId)
+  );
+
+  const userIdsToRemove = [...existingUserIds].filter(
+    (userId) => !nextUserIds.has(userId)
+  );
+
+  await prisma.$transaction([
+    ...(userIdsToAdd.length > 0
+      ? [
+          prisma.meetingParticipant.createMany({
+            data: userIdsToAdd.map((userId) => ({
+              meetingId: parsed.meetingId,
+              userId,
+            })),
+            skipDuplicates: true,
+          }),
+        ]
+      : []),
+    ...(userIdsToRemove.length > 0
+      ? [
+          prisma.meetingParticipant.deleteMany({
+            where: {
+              meetingId: parsed.meetingId,
+              userId: {
+                in: userIdsToRemove,
+              },
+            },
+          }),
+        ]
+      : []),
+  ]);
+
+  const updatedMeeting = await prisma.teamMeeting.findUnique({
+    where: { id: parsed.meetingId },
+    include: {
+      team: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      project: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      participants: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
+      meetingRecordings: {
+        include: {
+          addedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+    },
+  });
+
+  if (!updatedMeeting) {
+    throw new ActionError("Réunion introuvable après mise à jour.", 404);
+  }
+
+  await notifyNewMeetingParticipants({
+    newParticipantUserIds: userIdsToAdd,
+    actorUserId: user.id,
+    actorName: user.name,
+    meetingTitle: updatedMeeting.title,
+    meetingId: updatedMeeting.id,
+    teamId: updatedMeeting.teamId,
+    projectId: updatedMeeting.projectId ?? ctx.projectId,
+  });
+
+  revalidateMeetingPaths(updatedMeeting.id, updatedMeeting.teamId);
+  revalidatePath(`/project/${ctx.projectId}`);
+
+  return {
+    success: true,
+    message: "Participants mis à jour avec succès.",
+    addedCount: userIdsToAdd.length,
+    removedCount: userIdsToRemove.length,
+    meeting: updatedMeeting,
   };
 }

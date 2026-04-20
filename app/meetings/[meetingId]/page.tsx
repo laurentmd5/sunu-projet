@@ -351,9 +351,7 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const isCancelled = meeting.status === "CANCELLED";
     const hasVideoLink = Boolean(meeting.externalUrl);
     const recordings = meeting.meetingRecordings || [];
-    const canManageMeeting =
-        meeting.currentUserTeamRole === "OWNER" ||
-        meeting.currentUserTeamRole === "MANAGER";
+    const canManageMeeting = meeting.currentUserTeamRole === "OWNER";
 
     return (
         <Wrapper>

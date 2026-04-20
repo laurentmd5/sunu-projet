@@ -11,7 +11,7 @@ import {
 import { ViewerPermission } from "./lib/permissions-core";
 
 export type ProjectRole = "OWNER" | "MANAGER" | "VIEWER" | "MEMBER";
-export type TeamRole = "OWNER" | "MANAGER" | "MEMBER";
+export type TeamRole = "OWNER" | "MEMBER";
 export type TaskStatus =
     | "TODO"
     | "IN_PROGRESS"

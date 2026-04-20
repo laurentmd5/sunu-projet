@@ -218,11 +218,41 @@ export type MeetingRecording = PrismaMeetingRecording & {
     addedBy?: User;
 };
 
+export type MeetingParticipantItem = {
+    id: string;
+    meetingId: string;
+    userId: string;
+    joinedAt: Date | string | null;
+    createdAt: Date | string;
+    user: {
+        id: string;
+        name: string | null;
+        email: string;
+    };
+};
+
 export type TeamMeeting = PrismaTeamMeeting & {
-    team?: Team;
-    project?: Project | null;
-    createdBy?: User;
-    meetingRecordings?: MeetingRecording[];
+    team?: {
+        id: string;
+        name: string;
+    };
+    project?: {
+        id: string;
+        name: string;
+    } | null;
+    createdBy?: {
+        id: string;
+        name: string | null;
+        email: string;
+    };
+    meetingRecordings?: (MeetingRecording & {
+        addedBy?: {
+            id: string;
+            name: string | null;
+            email: string;
+        };
+    })[];
+    participants?: MeetingParticipantItem[];
     currentUserTeamRole?: TeamRole | null;
 };
 

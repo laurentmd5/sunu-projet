@@ -3,37 +3,64 @@
 import { useEffect, useState } from "react";
 import Wrapper from "./components/Wrapper";
 import { FolderKanban } from "lucide-react";
-import { createProject, deleteProjectById, getProjectsCreatedByUSer } from "./actions";
+import {
+  createProject,
+  deleteProjectById,
+  getOwnerDashboardOverview,
+  getProjectsCreatedByUSer,
+} from "./actions";
 import { toast } from "react-toastify";
-import { Project } from "@/type";
+import { OwnerDashboardOverview, Project } from "@/type";
 import ProjectComponent from "./components/ProjectComponent";
 import EmptyState from "./components/EmptyState";
+import OwnerDashboardSummary from "./components/OwnerDashboardSummary";
+import OwnerDashboardProjectCard from "./components/OwnerDashboardProjectCard";
 
 export default function Home() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [dashboard, setDashboard] = useState<OwnerDashboardOverview | null>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
 
   const fetchProjects = async () => {
     try {
-      const myproject = await getProjectsCreatedByUSer();
-      setProjects(myproject);
+      const myProjects = await getProjectsCreatedByUSer();
+      setProjects(myProjects);
     } catch (error) {
       console.error("Erreur lors du chargement des projets:", error);
     }
   };
 
+  const fetchDashboard = async () => {
+    try {
+      setLoadingDashboard(true);
+      const data = await getOwnerDashboardOverview();
+      setDashboard(data);
+    } catch (error) {
+      console.error("Erreur lors du chargement du dashboard owner:", error);
+    } finally {
+      setLoadingDashboard(false);
+    }
+  };
+
+  const refreshHomeData = async () => {
+    await Promise.all([fetchProjects(), fetchDashboard()]);
+  };
+
   useEffect(() => {
-    fetchProjects();
+    refreshHomeData();
   }, []);
 
   const deleteProject = async (projectId: string) => {
     try {
       await deleteProjectById(projectId);
-      await fetchProjects();
+      await refreshHomeData();
       toast.success("Projet supprimé !");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erreur lors de la suppression");
+      toast.error(
+        error instanceof Error ? error.message : "Erreur lors de la suppression"
+      );
       throw error;
     }
   };
@@ -49,7 +76,7 @@ export default function Home() {
 
       setName("");
       setDescription("");
-      await fetchProjects();
+      await refreshHomeData();
       toast.success("Projet créé");
     } catch (error) {
       console.error("Error creating project:", error);
@@ -59,78 +86,124 @@ export default function Home() {
 
   return (
     <Wrapper>
-      <div>
-        <button
-          className="btn btn-soft btn-primary border border-base-300 mb-6"
-          onClick={() =>
-            (document.getElementById("my_modal_3") as HTMLDialogElement).showModal()
-          }
-        >
-          Nouveau Projet <FolderKanban />
-        </button>
-
-        <dialog id="my_modal_3" className="modal">
-          <div className="modal-box">
-            <form method="dialog">
-              <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">
-                ✕
-              </button>
-            </form>
-
-            <h3 className="font-bold text-lg">Nouveau Projet</h3>
-            <p className="py-4">
-              Décrivez votre projet simplement grâce à la description
-            </p>
-
+      <div className="space-y-8">
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <input
-                placeholder="Nom du projet"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="border border-base-300 input input-bordered w-full mb-4 placeholder:text-sm"
-                required
-              />
-
-              <textarea
-                placeholder="Description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="mb-2 textarea textarea-bordered border border-base-300 w-full textarea-md placeholder:text-sm"
-                required
-              />
-
-              <button className="btn btn-primary" onClick={handleSubmit}>
-                Nouveau Projet <FolderKanban />
-              </button>
+              <h1 className="text-2xl font-bold">Dashboard owner</h1>
+              <p className="mt-1 text-sm opacity-70">
+                Vue macro centralisée de vos projets, de leur santé et des alertes prioritaires.
+              </p>
             </div>
-          </div>
-        </dialog>
 
-        <div className="w-full">
-          {projects.length > 0 ? (
-            <ul className="w-full grid md:grid-cols-3 gap-6">
-              {projects.map((project) => (
-                <li key={project.id}>
-                  <ProjectComponent
-                    project={project}
-                    admin={1}
-                    style={true}
-                    onDelete={deleteProject}
-                  />
-                </li>
-              ))}
-            </ul>
+            <button
+              className="btn btn-soft btn-primary border border-base-300"
+              onClick={() =>
+                (document.getElementById("my_modal_3") as HTMLDialogElement).showModal()
+              }
+            >
+              Nouveau Projet <FolderKanban />
+            </button>
+          </div>
+
+          {loadingDashboard ? (
+            <div className="rounded-xl border border-base-300 p-5 text-sm opacity-70">
+              Chargement du dashboard...
+            </div>
+          ) : dashboard ? (
+            <div className="space-y-6">
+              <OwnerDashboardSummary summary={dashboard.summary} />
+
+              {dashboard.projects.length > 0 ? (
+                <div className="grid gap-6 xl:grid-cols-2">
+                  {dashboard.projects.map((card) => (
+                    <OwnerDashboardProjectCard key={card.projectId} card={card} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  imageSrc="/empty-project.png"
+                  imageAlt="Aucun projet owner"
+                  message="Aucun projet owner à afficher dans le dashboard."
+                />
+              )}
+            </div>
           ) : (
-            <div>
+            <div className="rounded-xl border border-base-300 p-5 text-sm text-error">
+              Impossible de charger le dashboard owner.
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold">Mes projets</h2>
+            <p className="mt-1 text-sm opacity-70">
+              Vue existante conservée pour une transition progressive.
+            </p>
+          </div>
+
+          <dialog id="my_modal_3" className="modal">
+            <div className="modal-box">
+              <form method="dialog">
+                <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">
+                  ✕
+                </button>
+              </form>
+
+              <h3 className="font-bold text-lg">Nouveau Projet</h3>
+              <p className="py-4">
+                Décrivez votre projet simplement grâce à la description
+              </p>
+
+              <div>
+                <input
+                  placeholder="Nom du projet"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="border border-base-300 input input-bordered w-full mb-4 placeholder:text-sm"
+                  required
+                />
+
+                <textarea
+                  placeholder="Description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="mb-2 textarea textarea-bordered border border-base-300 w-full textarea-md placeholder:text-sm"
+                  required
+                />
+
+                <button className="btn btn-primary" onClick={handleSubmit}>
+                  Nouveau Projet <FolderKanban />
+                </button>
+              </div>
+            </div>
+          </dialog>
+
+          <div className="w-full">
+            {projects.length > 0 ? (
+              <ul className="grid w-full gap-6 md:grid-cols-3">
+                {projects.map((project) => (
+                  <li key={project.id}>
+                    <ProjectComponent
+                      project={project}
+                      admin={1}
+                      style={true}
+                      onDelete={deleteProject}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : (
               <EmptyState
                 imageSrc="/empty-project.png"
                 imageAlt="Picture of an empty project"
                 message="Aucun projet créé"
               />
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </section>
       </div>
     </Wrapper>
   );

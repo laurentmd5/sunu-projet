@@ -5,7 +5,9 @@ import { getCurrentDbUser } from "@/lib/project-access";
 import {
   buildProjectAlerts,
   computeProjectHealth,
-  computeProjectProgressPercent,
+  computeWeightedOverdueTaskTotal,
+  computeWeightedProjectProgressPercent,
+  computeWeightedTaskTotal,
   isTaskDueSoon,
   isTaskOverdue,
 } from "@/lib/dashboard";
@@ -51,6 +53,7 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
           milestoneId: true,
           userId: true,
           teamId: true,
+          priority: true,
         },
       },
       teams: {
@@ -160,9 +163,27 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
         isTaskOverdue(task.dueDate, task.status, now)
       ).length;
 
+      const weightedAssignedTasks = computeWeightedTaskTotal(
+        memberTasks,
+        (task) => task.priority
+      );
+
+      const weightedCompletedTasks = computeWeightedTaskTotal(
+        memberTasks.filter((task) => task.status === "DONE"),
+        (task) => task.priority
+      );
+
+      const weightedOverdueMemberTasks = computeWeightedOverdueTaskTotal(
+        memberTasks,
+        (task) => task.dueDate,
+        (task) => task.status,
+        (task) => task.priority,
+        now
+      );
+
       const completionRatePercent =
-        assignedTasks > 0
-          ? Math.round((completedMemberTasks / assignedTasks) * 100)
+        weightedAssignedTasks > 0
+          ? Math.round((weightedCompletedTasks / weightedAssignedTasks) * 100)
           : 0;
 
       const isActive7d = activeMembersSet.has(membership.user.id);
@@ -170,7 +191,7 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       const performanceScore = Math.max(
         0,
         Math.round(
-          completionRatePercent - overdueMemberTasks * 10 + (isActive7d ? 10 : 0)
+          completionRatePercent - weightedOverdueMemberTasks * 5 + (isActive7d ? 10 : 0)
         )
       );
 
@@ -208,10 +229,11 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
         isTaskOverdue(task.dueDate, task.status, now)
       ).length;
 
-      const progressTeamPercent =
-        totalTeamTasks > 0
-          ? Math.round((completedTeamTasks / totalTeamTasks) * 100)
-          : 0;
+      const progressTeamPercent = computeWeightedProjectProgressPercent(
+        teamTasks,
+        (task) => task.status,
+        (task) => task.priority
+      );
 
       return {
         teamId: team.id,
@@ -224,11 +246,34 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       };
     });
 
-    const progressPercent = computeProjectProgressPercent(completedTasks, totalTasks);
+    const weightedProgressPercent = computeWeightedProjectProgressPercent(
+      project.tasks,
+      (task) => task.status,
+      (task) => task.priority
+    );
+
+    const weightedActiveTasksWithDueDate = computeWeightedTaskTotal(
+      project.tasks.filter(
+        (t) => t.dueDate && t.status !== "DONE" && t.status !== "CANCELLED"
+      ),
+      (task) => task.priority
+    );
+
+    const weightedOverdueTasks = computeWeightedOverdueTaskTotal(
+      project.tasks,
+      (task) => task.dueDate,
+      (task) => task.status,
+      (task) => task.priority,
+      now
+    );
+
+    const progressPercent = weightedProgressPercent;
 
     const health = computeProjectHealth({
       overdueTasks,
       activeTasksWithDueDate,
+      weightedOverdueTasks,
+      weightedActiveTasksWithDueDate,
       activeMembers7d,
       membersCount: executableMembersCount,
       progressPercent,

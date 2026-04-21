@@ -1,6 +1,8 @@
 export type DashboardHealthInputs = {
   overdueTasks: number;
   activeTasksWithDueDate: number;
+  weightedOverdueTasks?: number;
+  weightedActiveTasksWithDueDate?: number;
   activeMembers7d: number;
   membersCount: number;
   progressPercent: number;
@@ -18,6 +20,20 @@ export type DashboardHealthResult = {
 };
 
 const FINAL_TASK_STATUSES = new Set(["DONE", "CANCELLED"]);
+
+const TASK_PRIORITY_WEIGHTS = {
+  LOW: 1,
+  MEDIUM: 2,
+  HIGH: 3,
+  CRITICAL: 4,
+} as const;
+
+type TaskPriority = keyof typeof TASK_PRIORITY_WEIGHTS;
+
+export function getTaskPriorityWeight(priority?: string | null) {
+  if (!priority) return TASK_PRIORITY_WEIGHTS.MEDIUM;
+  return TASK_PRIORITY_WEIGHTS[priority as TaskPriority] ?? TASK_PRIORITY_WEIGHTS.MEDIUM;
+}
 
 export function isTaskOverdue(
   dueDate?: Date | string | null,
@@ -39,12 +55,58 @@ export function isTaskDueSoon(
   return diff >= 0 && diff <= 48 * 60 * 60 * 1000;
 }
 
+export function computeWeightedTaskTotal<T>(
+  tasks: T[],
+  getPriority: (task: T) => string | null | undefined
+) {
+  return tasks.reduce((sum, task) => sum + getTaskPriorityWeight(getPriority(task)), 0);
+}
+
+export function computeWeightedCompletedTaskTotal<T>(
+  tasks: T[],
+  getStatus: (task: T) => string,
+  getPriority: (task: T) => string | null | undefined
+) {
+  return tasks
+    .filter((task) => getStatus(task) === "DONE")
+    .reduce((sum, task) => sum + getTaskPriorityWeight(getPriority(task)), 0);
+}
+
+export function computeWeightedOverdueTaskTotal<T>(
+  tasks: T[],
+  getDueDate: (task: T) => Date | string | null | undefined,
+  getStatus: (task: T) => string,
+  getPriority: (task: T) => string | null | undefined,
+  now = new Date()
+) {
+  return tasks
+    .filter((task) => isTaskOverdue(getDueDate(task), getStatus(task), now))
+    .reduce((sum, task) => sum + getTaskPriorityWeight(getPriority(task)), 0);
+}
+
 export function computeProjectProgressPercent(
   completedTasks: number,
   totalTasks: number
 ) {
   if (totalTasks <= 0) return 0;
   return Math.round((completedTasks / totalTasks) * 100);
+}
+
+export function computeWeightedProjectProgressPercent<T>(
+  tasks: T[],
+  getStatus: (task: T) => string,
+  getPriority: (task: T) => string | null | undefined
+) {
+  const weightedTotal = computeWeightedTaskTotal(tasks, getPriority);
+  if (weightedTotal <= 0) return 0;
+
+  const weightedCompleted = computeWeightedCompletedTaskTotal(
+    tasks,
+    getStatus,
+    getPriority
+  );
+
+  return Math.round((weightedCompleted / weightedTotal) * 100);
 }
 
 export function computeScheduleAlignmentPercent(params: {
@@ -73,6 +135,8 @@ export function computeProjectHealth(input: DashboardHealthInputs): DashboardHea
   const {
     overdueTasks,
     activeTasksWithDueDate,
+    weightedOverdueTasks,
+    weightedActiveTasksWithDueDate,
     activeMembers7d,
     membersCount,
     progressPercent,
@@ -81,9 +145,13 @@ export function computeProjectHealth(input: DashboardHealthInputs): DashboardHea
     now = new Date(),
   } = input;
 
+  const effectiveOverdueTasks = weightedOverdueTasks ?? overdueTasks;
+  const effectiveActiveTasksWithDueDate =
+    weightedActiveTasksWithDueDate ?? activeTasksWithDueDate;
+
   const lateRatePercent =
-    activeTasksWithDueDate > 0
-      ? Math.round((overdueTasks / activeTasksWithDueDate) * 100)
+    effectiveActiveTasksWithDueDate > 0
+      ? Math.round((effectiveOverdueTasks / effectiveActiveTasksWithDueDate) * 100)
       : 0;
 
   const lateScore = Math.max(0, 100 - lateRatePercent);

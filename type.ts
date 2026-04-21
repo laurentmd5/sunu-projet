@@ -298,3 +298,64 @@ export type NotificationItem = {
     readAt: Date | string | null;
     createdAt: Date | string;
 };
+
+// Dashboard Types
+export type OwnerDashboardHealthColor = "GREEN" | "ORANGE" | "RED";
+
+export type OwnerDashboardAlert = {
+    type:
+        | "OVERDUE_TASKS"
+        | "TASKS_DUE_SOON"
+        | "INACTIVE_MEMBERS"
+        | "MILESTONES_AT_RISK"
+        | "PROJECT_LATE";
+    level: "info" | "warning" | "critical";
+    message: string;
+    count?: number;
+};
+
+export type OwnerDashboardRecentActivityItem = {
+    id: string;
+    type: string;
+    message: string;
+    createdAt: Date | string;
+    actor: {
+        id: string;
+        name: string | null;
+        email: string;
+    };
+};
+
+export type OwnerDashboardProjectCard = {
+    projectId: string;
+    projectName: string;
+    projectStatus: "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD";
+    startDate: Date | string | null;
+    endDate: Date | string | null;
+    membersCount: number;
+    activeMembers7d: number;
+    totalTasks: number;
+    activeTasks: number;
+    completedTasks: number;
+    overdueTasks: number;
+    dueSoonTasks: number;
+    progressPercent: number;
+    lateRatePercent: number;
+    activityRatePercent: number;
+    scheduleAlignmentPercent: number;
+    healthScore: number;
+    healthColor: OwnerDashboardHealthColor;
+    alerts: OwnerDashboardAlert[];
+    recentActivity: OwnerDashboardRecentActivityItem[];
+};
+
+export type OwnerDashboardOverview = {
+    projects: OwnerDashboardProjectCard[];
+    summary: {
+        totalProjects: number;
+        greenProjects: number;
+        orangeProjects: number;
+        redProjects: number;
+        totalOverdueTasks: number;
+    };
+};

@@ -619,15 +619,22 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                             <>
                                 <div className="rounded-lg border border-base-300 p-3">
                                     <p className="text-sm opacity-70 mb-2">Lien de réunion</p>
-                                    <a
-                                        href={meeting.externalUrl!}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="flex items-center gap-2 link link-primary break-all"
-                                    >
-                                        <Link2 className="w-4 h-4" />
-                                        {meeting.externalUrl}
-                                    </a>
+
+                                    {canJoinMeeting ? (
+                                        <a
+                                            href={meeting.externalUrl!}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="flex items-center gap-2 link link-primary break-all"
+                                        >
+                                            <Link2 className="w-4 h-4" />
+                                            {meeting.externalUrl}
+                                        </a>
+                                    ) : (
+                                        <div className="text-sm opacity-60">
+                                            Le lien de visioconférence est masqué car vous n'avez pas l'autorisation de rejoindre cette réunion.
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -647,14 +654,16 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                         </div>
                                     )}
 
-                                    <button
-                                        type="button"
-                                        className="btn btn-outline w-full sm:w-auto"
-                                        onClick={handleCopyLink}
-                                    >
-                                        <Copy className="w-4 h-4" />
-                                        Copier le lien
-                                    </button>
+                                    {canJoinMeeting ? (
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline w-full sm:w-auto"
+                                            onClick={handleCopyLink}
+                                        >
+                                            <Copy className="w-4 h-4" />
+                                            Copier le lien
+                                        </button>
+                                    ) : null}
 
                                     {canManageMeeting && (
                                         <>

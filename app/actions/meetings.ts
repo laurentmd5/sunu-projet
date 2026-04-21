@@ -494,35 +494,71 @@ export async function getMeetingsForCurrentUser() {
     })
     .map((membership) => membership.projectId);
 
+  const managedProjectIds = memberships
+    .filter(
+      (membership) =>
+        membership.role === "OWNER" || membership.role === "MANAGER"
+    )
+    .map((membership) => membership.projectId);
+
+  const teamMemberships = await prisma.teamMember.findMany({
+    where: {
+      userId: user.id,
+    },
+    select: {
+      teamId: true,
+      team: {
+        select: {
+          projectId: true,
+        },
+      },
+    },
+  });
+
+  const userTeamIds = teamMemberships.map((membership) => membership.teamId);
+
   const meetings = await prisma.teamMeeting.findMany({
     where: {
       OR: [
+        // OWNER / MANAGER voient toutes les réunions de leurs projets
+        {
+          projectId: {
+            in: managedProjectIds,
+          },
+        },
+
+        // Réunions projet globales (sans équipe spécifique) visibles aux membres autorisés
         {
           projectId: {
             in: readableProjectIds,
           },
+          teamId: null,
         },
+
+        // Réunions ciblées équipe : visibles si l'utilisateur est membre de l'équipe
         {
-          projectId: null,
-          team: {
-            projectId: {
-              in: readableProjectIds,
-            },
+          projectId: {
+            in: readableProjectIds,
+          },
+          teamId: {
+            in: userTeamIds,
           },
         },
+
+        // Réunions où l'utilisateur est participant explicite
         {
-          projectId: null,
-          teamId: null,
-          createdById: user.id,
-        },
-        {
-          projectId: null,
-          teamId: null,
           participants: {
             some: {
               userId: user.id,
             },
           },
+        },
+
+        // Réunions autonomes créées par l'utilisateur
+        {
+          projectId: null,
+          teamId: null,
+          createdById: user.id,
         },
       ],
     },

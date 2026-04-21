@@ -5,6 +5,7 @@ import Wrapper from "../components/Wrapper";
 import EmptyState from "../components/EmptyState";
 import {
     createMeeting,
+    getEligibleParticipantsForMeetingCreation,
     getMeetingsForCurrentUser,
     getProjectsAssociatedWithUser,
     getTeamsForCurrentUser,
@@ -27,6 +28,13 @@ type TeamOption = Team & {
     currentUserRole?: TeamRole;
     membersCount?: number;
     projectsCount?: number;
+};
+
+type EligibleMeetingParticipant = {
+    id: string;
+    name: string | null;
+    email: string;
+    role: "OWNER" | "MANAGER" | "VIEWER" | "MEMBER" | null;
 };
 
 const STATUS_LABELS = {
@@ -61,6 +69,8 @@ const page = () => {
     const [selectedTeamId, setSelectedTeamId] = useState("");
     const [selectedProjectId, setSelectedProjectId] = useState("");
     const [externalUrl, setExternalUrl] = useState("");
+    const [eligibleParticipants, setEligibleParticipants] = useState<EligibleMeetingParticipant[]>([]);
+    const [selectedParticipantUserIds, setSelectedParticipantUserIds] = useState<string[]>([]);
 
     const fetchMeetings = async () => {
         try {
@@ -98,6 +108,16 @@ const page = () => {
         fetchProjects();
     }, []);
 
+    useEffect(() => {
+        fetchEligibleParticipants(selectedProjectId || null);
+
+        if (!selectedProjectId) {
+            setSelectedTeamId("");
+        }
+
+        setSelectedParticipantUserIds([]);
+    }, [selectedProjectId]);
+
     const filteredMeetings = useMemo(() => {
         return meetings.filter((meeting) => {
             const teamMatch = !teamFilter || meeting.teamId === teamFilter;
@@ -115,6 +135,15 @@ const page = () => {
         return teams.filter((team) => team.projectId === selectedProjectId);
     }, [teams, selectedProjectId]);
 
+    const fetchEligibleParticipants = async (projectId?: string | null) => {
+        try {
+            const data = await getEligibleParticipantsForMeetingCreation(projectId ?? null);
+            setEligibleParticipants(data as EligibleMeetingParticipant[]);
+        } catch (error) {
+            toast.error("Erreur lors du chargement des participants éligibles.");
+        }
+    };
+
     const resetForm = () => {
         setTitle("");
         setDescription("");
@@ -124,6 +153,16 @@ const page = () => {
         setSelectedTeamId("");
         setSelectedProjectId("");
         setExternalUrl("");
+        setSelectedParticipantUserIds([]);
+        setEligibleParticipants([]);
+    };
+
+    const handleToggleParticipant = (userId: string) => {
+        setSelectedParticipantUserIds((prev) =>
+            prev.includes(userId)
+                ? prev.filter((id) => id !== userId)
+                : [...prev, userId]
+        );
     };
 
     const handleCreateMeeting = async () => {
@@ -144,6 +183,7 @@ const page = () => {
                 teamId: selectedTeamId || null,
                 projectId: selectedProjectId || null,
                 externalUrl: externalUrl || null,
+                participantUserIds: selectedParticipantUserIds,
             });
 
             resetForm();
@@ -351,6 +391,50 @@ const page = () => {
                                 onChange={(e) => setNotes(e.target.value)}
                                 className="textarea textarea-bordered w-full min-h-32"
                             />
+
+                            <div>
+                                <label className="label">
+                                    <span className="label-text">Participants (optionnel)</span>
+                                </label>
+
+                                {eligibleParticipants.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto rounded-lg border border-base-300 p-3">
+                                        {eligibleParticipants.map((participant) => {
+                                            const checked = selectedParticipantUserIds.includes(participant.id);
+
+                                            return (
+                                                <label
+                                                    key={participant.id}
+                                                    className="flex items-start gap-3 rounded-lg border border-base-300 p-3 cursor-pointer hover:bg-base-200"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        className="checkbox checkbox-sm mt-1"
+                                                        checked={checked}
+                                                        onChange={() => handleToggleParticipant(participant.id)}
+                                                    />
+
+                                                    <div className="min-w-0">
+                                                        <p className="font-medium break-words">
+                                                            {participant.name || participant.email}
+                                                        </p>
+                                                        <p className="text-sm opacity-70 break-all">
+                                                            {participant.email}
+                                                        </p>
+                                                        <p className="text-xs opacity-60 mt-1">
+                                                            {participant.role ? `Rôle : ${participant.role}` : "Utilisateur"}
+                                                        </p>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
+                                        Aucun participant sélectionnable pour le contexte actuel.
+                                    </div>
+                                )}
+                            </div>
 
                             <div className="flex justify-end">
                                 <button

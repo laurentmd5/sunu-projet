@@ -52,6 +52,7 @@ export {
     regenerateJitsiMeetingLink,
     removeMeetingVideoLink,
     getEligibleMeetingParticipants,
+    getEligibleParticipantsForMeetingCreation,
     updateMeetingParticipants,
 } from "./meetings";
 

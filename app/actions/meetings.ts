@@ -1125,3 +1125,78 @@ export async function getEligibleMeetingParticipants(meetingId: string) {
       role: member.role,
     }));
 }
+
+export async function getEligibleParticipantsForMeetingCreation(
+  projectId?: string | null
+) {
+  const user = await getCurrentDbUser();
+
+  if (!projectId) {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
+
+    return users
+      .filter((candidate) => candidate.id !== user.id)
+      .map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+        email: candidate.email,
+        role: null as "OWNER" | "MANAGER" | "VIEWER" | "MEMBER" | null,
+      }));
+  }
+
+  const members = await prisma.projectUser.findMany({
+    where: {
+      projectId,
+    },
+    select: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      role: true,
+      viewerPermissionGrants: {
+        select: {
+          permission: true,
+        },
+      },
+    },
+    orderBy: {
+      user: {
+        name: "asc",
+      },
+    },
+  });
+
+  return members
+    .filter((member) => {
+      if (member.user.id === user.id) {
+        return false;
+      }
+
+      if (member.role !== "VIEWER") {
+        return true;
+      }
+
+      return member.viewerPermissionGrants.some(
+        (grant) => grant.permission === "JOIN_MEETINGS"
+      );
+    })
+    .map((member) => ({
+      id: member.user.id,
+      name: member.user.name,
+      email: member.user.email,
+      role: member.role,
+    }));
+}

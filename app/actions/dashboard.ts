@@ -213,6 +213,8 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       .sort((a, b) => b.performanceScore - a.performanceScore)
       .slice(0, 3);
 
+    const topPerformer = topMembers.length > 0 ? topMembers[0] : null;
+
     const strugglingMembers = [...memberMetrics]
       .filter((member) => member.overdueTasks > 0 || !member.isActive7d)
       .sort((a, b) => b.overdueTasks - a.overdueTasks)
@@ -338,6 +340,8 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
         topMembers,
         strugglingMembers,
         teamMetrics,
+        topPerformer,
+        milestonesAtRiskCount,
       } satisfies OwnerDashboardProjectInsight,
     };
   });

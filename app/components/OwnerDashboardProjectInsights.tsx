@@ -1,6 +1,7 @@
 "use client";
 
 import type { OwnerDashboardProjectInsight } from "@/type";
+import { Award, Flag } from "lucide-react";
 
 type Props = {
   insights?: OwnerDashboardProjectInsight;
@@ -11,6 +12,30 @@ export default function OwnerDashboardProjectInsights({ insights }: Props) {
 
   return (
     <div className="mt-5 space-y-4">
+      {insights.topPerformer && (
+        <div className="rounded-lg border border-base-300 p-3 text-sm">
+          <div className="mb-1 flex items-center gap-2 font-medium">
+            <Award className="h-4 w-4" />
+            <span>Top contributeur</span>
+          </div>
+          <p>{insights.topPerformer.name || insights.topPerformer.email}</p>
+          <p className="mt-1 opacity-70">
+            Score {insights.topPerformer.performanceScore} ·{" "}
+            {insights.topPerformer.completedTasks}/{insights.topPerformer.assignedTasks} tâches terminées
+          </p>
+        </div>
+      )}
+
+      {(insights.milestonesAtRiskCount ?? 0) > 0 && (
+        <div className="rounded-lg border border-base-300 p-3 text-sm">
+          <div className="mb-1 flex items-center gap-2 font-medium">
+            <Flag className="h-4 w-4" />
+            <span>Jalons à risque</span>
+          </div>
+          <p>{insights.milestonesAtRiskCount} jalon(s) nécessitent une attention particulière.</p>
+        </div>
+      )}
+
       <div>
         <h3 className="mb-2 text-sm font-semibold">Top contributeurs</h3>
         {insights.topMembers.length > 0 ? (

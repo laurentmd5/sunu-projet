@@ -15,6 +15,7 @@ import ProjectComponent from "./components/ProjectComponent";
 import EmptyState from "./components/EmptyState";
 import OwnerDashboardSummary from "./components/OwnerDashboardSummary";
 import OwnerDashboardProjectCard from "./components/OwnerDashboardProjectCard";
+import OwnerPriorityProjects from "./components/OwnerPriorityProjects";
 
 export default function Home() {
   const [name, setName] = useState("");
@@ -113,6 +114,7 @@ export default function Home() {
           ) : dashboard ? (
             <div className="space-y-6">
               <OwnerDashboardSummary summary={dashboard.summary} />
+              <OwnerPriorityProjects projects={dashboard.projects} />
 
               {dashboard.projects.length > 0 ? (
                 <div className="grid gap-6 xl:grid-cols-2">

@@ -352,6 +352,8 @@ export type OwnerDashboardProjectInsight = {
     topMembers: OwnerDashboardMemberMetric[];
     strugglingMembers: OwnerDashboardMemberMetric[];
     teamMetrics: OwnerDashboardTeamMetric[];
+    topPerformer?: OwnerDashboardMemberMetric | null;
+    milestonesAtRiskCount?: number;
 };
 
 export type OwnerDashboardProjectCard = {

@@ -71,6 +71,7 @@ const page = () => {
     const [externalUrl, setExternalUrl] = useState("");
     const [eligibleParticipants, setEligibleParticipants] = useState<EligibleMeetingParticipant[]>([]);
     const [selectedParticipantUserIds, setSelectedParticipantUserIds] = useState<string[]>([]);
+    const [participantSearch, setParticipantSearch] = useState("");
 
     const fetchMeetings = async () => {
         try {
@@ -135,6 +136,21 @@ const page = () => {
         return teams.filter((team) => team.projectId === selectedProjectId);
     }, [teams, selectedProjectId]);
 
+    const filteredEligibleParticipants = useMemo(() => {
+        const query = participantSearch.trim().toLowerCase();
+
+        if (!query) {
+            return eligibleParticipants;
+        }
+
+        return eligibleParticipants.filter((participant) => {
+            const name = participant.name?.toLowerCase() ?? "";
+            const email = participant.email.toLowerCase();
+
+            return name.includes(query) || email.includes(query);
+        });
+    }, [eligibleParticipants, participantSearch]);
+
     const fetchEligibleParticipants = async (projectId?: string | null) => {
         try {
             const data = await getEligibleParticipantsForMeetingCreation(projectId ?? null);
@@ -155,6 +171,7 @@ const page = () => {
         setExternalUrl("");
         setSelectedParticipantUserIds([]);
         setEligibleParticipants([]);
+        setParticipantSearch("");
     };
 
     const handleToggleParticipant = (userId: string) => {
@@ -397,9 +414,17 @@ const page = () => {
                                     <span className="label-text">Participants (optionnel)</span>
                                 </label>
 
+                                <input
+                                    type="text"
+                                    placeholder="Rechercher un participant par nom ou email"
+                                    className="input input-bordered w-full mb-3"
+                                    value={participantSearch}
+                                    onChange={(e) => setParticipantSearch(e.target.value)}
+                                />
+
                                 {eligibleParticipants.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto rounded-lg border border-base-300 p-3">
-                                        {eligibleParticipants.map((participant) => {
+                                        {filteredEligibleParticipants.map((participant) => {
                                             const checked = selectedParticipantUserIds.includes(participant.id);
 
                                             return (

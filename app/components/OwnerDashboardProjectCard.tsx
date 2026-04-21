@@ -112,6 +112,22 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
         </div>
       )}
 
+      {card.healthDrivers.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-2 text-sm font-semibold">Facteurs principaux</h3>
+          <div className="flex flex-wrap gap-2">
+            {card.healthDrivers.map((driver) => (
+              <span
+                key={driver}
+                className="badge badge-outline"
+              >
+                {driver}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 space-y-3">
         <div>
           <div className="mb-1 flex justify-between text-sm">

@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { getCurrentDbUser } from "@/lib/project-access";
 import {
   buildProjectAlerts,
+  computeMilestoneRisk,
   computeProjectHealth,
   computeWeightedOverdueTaskTotal,
   computeWeightedProjectProgressPercent,
@@ -72,6 +73,7 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
           id: true,
           targetDate: true,
           status: true,
+          createdAt: true,
           tasks: {
             select: {
               id: true,
@@ -284,21 +286,28 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       now,
     });
 
-    const milestonesAtRiskCount = project.milestones.filter((milestone) => {
-      if (!milestone.targetDate || milestone.status === "COMPLETED") return false;
+    const milestoneRiskResults = project.milestones
+      .filter((milestone) => milestone.status !== "COMPLETED")
+      .map((milestone) => {
+        const totalMilestoneTasks = milestone.tasks.length;
+        const doneMilestoneTasks = milestone.tasks.filter((t) => t.status === "DONE").length;
 
-      const totalMilestoneTasks = milestone.tasks.length;
-      const doneMilestoneTasks = milestone.tasks.filter((t) => t.status === "DONE").length;
-      const milestoneProgress =
-        totalMilestoneTasks > 0
-          ? Math.round((doneMilestoneTasks / totalMilestoneTasks) * 100)
-          : 0;
+        return computeMilestoneRisk({
+          totalTasks: totalMilestoneTasks,
+          completedTasks: doneMilestoneTasks,
+          targetDate: milestone.targetDate,
+          createdAt: milestone.createdAt,
+          now,
+        });
+      });
 
-      const target = new Date(milestone.targetDate).getTime();
-      const remaining = target - now.getTime();
+    const milestonesAtRiskCount = milestoneRiskResults.filter(
+      (result) => result.isAtRisk
+    ).length;
 
-      return remaining <= 0 || (remaining <= 3 * 24 * 60 * 60 * 1000 && milestoneProgress < 50);
-    }).length;
+    const criticalMilestonesAtRiskCount = milestoneRiskResults.filter(
+      (result) => result.riskLevel === "CRITICAL"
+    ).length;
 
     const alerts = buildProjectAlerts({
       overdueTasks,
@@ -328,6 +337,7 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       scheduleAlignmentPercent: health.scheduleAlignmentPercent,
       healthScore: health.healthScore,
       healthColor: health.healthColor,
+      healthDrivers: health.healthDrivers,
       alerts,
       recentActivity: project.activityLogs.slice(0, 5).map((log) => ({
         id: log.id,
@@ -342,6 +352,7 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
         teamMetrics,
         topPerformer,
         milestonesAtRiskCount,
+        criticalMilestonesAtRiskCount,
       } satisfies OwnerDashboardProjectInsight,
     };
   });

@@ -354,6 +354,7 @@ export type OwnerDashboardProjectInsight = {
     teamMetrics: OwnerDashboardTeamMetric[];
     topPerformer?: OwnerDashboardMemberMetric | null;
     milestonesAtRiskCount?: number;
+    criticalMilestonesAtRiskCount?: number;
 };
 
 export type OwnerDashboardProjectCard = {
@@ -376,6 +377,7 @@ export type OwnerDashboardProjectCard = {
     scheduleAlignmentPercent: number;
     healthScore: number;
     healthColor: OwnerDashboardHealthColor;
+    healthDrivers: string[];
     alerts: OwnerDashboardAlert[];
     recentActivity: OwnerDashboardRecentActivityItem[];
     insights?: OwnerDashboardProjectInsight;

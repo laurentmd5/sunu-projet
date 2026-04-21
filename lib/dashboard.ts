@@ -17,6 +17,16 @@ export type DashboardHealthResult = {
   scheduleAlignmentPercent: number;
   healthScore: number;
   healthColor: "GREEN" | "ORANGE" | "RED";
+  healthDrivers: string[];
+};
+
+export type MilestoneRiskLevel = "LOW" | "WARNING" | "CRITICAL";
+
+export type MilestoneRiskResult = {
+  progressPercent: number;
+  scheduleAlignmentPercent: number;
+  riskLevel: MilestoneRiskLevel;
+  isAtRisk: boolean;
 };
 
 const FINAL_TASK_STATUSES = new Set(["DONE", "CANCELLED"]);
@@ -131,6 +141,98 @@ export function computeScheduleAlignmentPercent(params: {
   return Math.max(0, 100 - Math.abs(timeElapsedPercent - progressPercent));
 }
 
+export function computeMilestoneRisk(params: {
+  totalTasks: number;
+  completedTasks: number;
+  targetDate?: Date | string | null;
+  createdAt?: Date | string | null;
+  now?: Date;
+}): MilestoneRiskResult {
+  const {
+    totalTasks,
+    completedTasks,
+    targetDate,
+    createdAt,
+    now = new Date(),
+  } = params;
+
+  const progressPercent =
+    totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  if (!targetDate) {
+    return {
+      progressPercent,
+      scheduleAlignmentPercent: 50,
+      riskLevel: "LOW",
+      isAtRisk: false,
+    };
+  }
+
+  const target = new Date(targetDate).getTime();
+  const current = now.getTime();
+
+  if (Number.isNaN(target)) {
+    return {
+      progressPercent,
+      scheduleAlignmentPercent: 50,
+      riskLevel: "LOW",
+      isAtRisk: false,
+    };
+  }
+
+  if (target <= current) {
+    const riskLevel = progressPercent < 100 ? "CRITICAL" : "LOW";
+    return {
+      progressPercent,
+      scheduleAlignmentPercent: progressPercent < 100 ? 0 : 100,
+      riskLevel,
+      isAtRisk: riskLevel !== "LOW",
+    };
+  }
+
+  const start = createdAt ? new Date(createdAt).getTime() : null;
+
+  if (!start || Number.isNaN(start) || target <= start) {
+    const remaining = target - current;
+    const riskLevel =
+      remaining <= 3 * 24 * 60 * 60 * 1000 && progressPercent < 50
+        ? "WARNING"
+        : "LOW";
+
+    return {
+      progressPercent,
+      scheduleAlignmentPercent: 50,
+      riskLevel,
+      isAtRisk: riskLevel !== "LOW",
+    };
+  }
+
+  const elapsedRatio = (current - start) / (target - start);
+  const timeElapsedPercent = Math.max(0, Math.min(100, Math.round(elapsedRatio * 100)));
+  const scheduleAlignmentPercent = Math.max(
+    0,
+    100 - Math.abs(timeElapsedPercent - progressPercent)
+  );
+
+  let riskLevel: MilestoneRiskLevel = "LOW";
+
+  if (scheduleAlignmentPercent < 35 || (timeElapsedPercent >= 80 && progressPercent < 60)) {
+    riskLevel = "CRITICAL";
+  } else if (
+    scheduleAlignmentPercent < 60 ||
+    (timeElapsedPercent >= 50 && progressPercent < 50)
+  ) {
+    riskLevel = "WARNING";
+  }
+
+  return {
+    progressPercent,
+    scheduleAlignmentPercent,
+    riskLevel,
+    isAtRisk: riskLevel !== "LOW",
+  };
+}
+
 export function computeProjectHealth(input: DashboardHealthInputs): DashboardHealthResult {
   const {
     overdueTasks,
@@ -168,6 +270,24 @@ export function computeProjectHealth(input: DashboardHealthInputs): DashboardHea
     now,
   });
 
+  const healthDrivers: string[] = [];
+
+  if (lateRatePercent >= 40) {
+    healthDrivers.push("Retards élevés");
+  } else if (lateRatePercent >= 20) {
+    healthDrivers.push("Retards à surveiller");
+  }
+
+  if (activityRatePercent < 50) {
+    healthDrivers.push("Activité faible");
+  }
+
+  if (scheduleAlignmentPercent < 50) {
+    healthDrivers.push("Avancement en retard sur le planning");
+  } else if (scheduleAlignmentPercent < 70) {
+    healthDrivers.push("Planning à surveiller");
+  }
+
   const healthScore = Math.round(
     lateScore * 0.4 +
       activityRatePercent * 0.3 +
@@ -183,6 +303,7 @@ export function computeProjectHealth(input: DashboardHealthInputs): DashboardHea
     scheduleAlignmentPercent,
     healthScore,
     healthColor,
+    healthDrivers,
   };
 }
 
@@ -210,7 +331,7 @@ export function buildProjectAlerts(params: {
   if (params.overdueTasks > 0) {
     alerts.push({
       type: "OVERDUE_TASKS" as const,
-      level: params.overdueTasks >= 3 ? "critical" as const : "warning" as const,
+      level: params.overdueTasks >= 5 ? "critical" as const : "warning" as const,
       message: `${params.overdueTasks} tâche(s) en retard.`,
       count: params.overdueTasks,
     });
@@ -237,7 +358,7 @@ export function buildProjectAlerts(params: {
   if (params.milestonesAtRiskCount > 0) {
     alerts.push({
       type: "MILESTONES_AT_RISK" as const,
-      level: "warning" as const,
+      level: params.milestonesAtRiskCount >= 2 ? "critical" as const : "warning" as const,
       message: `${params.milestonesAtRiskCount} jalon(s) à risque.`,
       count: params.milestonesAtRiskCount,
     });

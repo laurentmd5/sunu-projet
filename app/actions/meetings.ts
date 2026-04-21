@@ -13,6 +13,7 @@ import {
 } from "@/lib/meeting-access";
 import { revalidatePath } from "next/cache";
 import { createNotifications } from "./notifications";
+import { sendMeetingInvitationEmail } from "@/lib/email";
 
 const createMeetingSchema = z.object({
   title: z
@@ -281,6 +282,66 @@ async function notifyNewMeetingParticipants(params: {
   }
 }
 
+async function sendMeetingInvitationEmails(params: {
+  recipientUserIds: string[];
+  actorUserId: string;
+  actorName?: string | null;
+  meetingId: string;
+  meetingTitle: string;
+  scheduledAt: Date | string;
+  durationMinutes?: number | null;
+  projectName?: string | null;
+  externalUrl?: string | null;
+}) {
+  const recipientIds = Array.from(
+    new Set(
+      params.recipientUserIds.filter(
+        (userId) => userId && userId !== params.actorUserId
+      )
+    )
+  );
+
+  if (!recipientIds.length) {
+    return;
+  }
+
+  try {
+    const recipients = await prisma.user.findMany({
+      where: {
+        id: {
+          in: recipientIds,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    await Promise.all(
+      recipients.map((recipient) =>
+        sendMeetingInvitationEmail({
+          to: recipient.email,
+          participantName: recipient.name,
+          actorName: params.actorName,
+          meetingTitle: params.meetingTitle,
+          meetingId: params.meetingId,
+          scheduledAt: params.scheduledAt,
+          durationMinutes: params.durationMinutes,
+          projectName: params.projectName,
+          externalUrl: params.externalUrl,
+        })
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Erreur lors de l'envoi des emails d'invitation réunion :",
+      error
+    );
+  }
+}
+
 export async function createMeeting(input: {
   title: string;
   description?: string;
@@ -381,6 +442,18 @@ export async function createMeeting(input: {
     projectId: meeting.projectId ?? undefined,
     meetingId: meeting.id,
     teamId: meeting.teamId ?? "",
+  });
+
+  await sendMeetingInvitationEmails({
+    recipientUserIds: uniqueParticipantUserIds,
+    actorUserId: user.id,
+    actorName: user.name,
+    meetingId: meeting.id,
+    meetingTitle: meeting.title,
+    scheduledAt: meeting.scheduledAt,
+    durationMinutes: meeting.durationMinutes,
+    projectName: meeting.project?.name ?? null,
+    externalUrl: meeting.externalUrl,
   });
 
   revalidatePath("/meetings");
@@ -1071,6 +1144,18 @@ export async function updateMeetingParticipants(
     meetingId: updatedMeeting.id,
     teamId: updatedMeeting.teamId ?? "",
     projectId: updatedMeeting.projectId ?? ctx.projectId,
+  });
+
+  await sendMeetingInvitationEmails({
+    recipientUserIds: userIdsToAdd,
+    actorUserId: user.id,
+    actorName: user.name,
+    meetingId: updatedMeeting.id,
+    meetingTitle: updatedMeeting.title,
+    scheduledAt: updatedMeeting.scheduledAt,
+    durationMinutes: updatedMeeting.durationMinutes,
+    projectName: updatedMeeting.project?.name ?? null,
+    externalUrl: updatedMeeting.externalUrl,
   });
 
   revalidateMeetingPaths(updatedMeeting.id, updatedMeeting.teamId);

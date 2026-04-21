@@ -1777,3 +1777,473 @@ Cette étape a particulièrement touché :
 - `app/notifications/page.tsx`
 - `lib/email.ts`
 - `Documentation_Migration_V1_V2.md`
+
+
+---
+
+# 19. Avancement complémentaire — lot 7 migration du module Réunions vers la V2 consolidée (20/04/2026 → 21/04/2026)
+
+## 19.1 Objectif du lot traité
+
+Après la stabilisation du schéma V2, du noyau permissions, du module Équipes, du module Tâches et du socle de notifications in-app, un lot complémentaire a été mené pour réaligner le module **Réunions** sur la cible métier V2.
+
+Ce lot a porté sur :
+
+- le réalignement du domaine `TeamMeeting` avec la V2 consolidée ;
+- l’exploitation réelle de `MeetingParticipant` ;
+- la clarification des permissions de consultation, participation et gestion ;
+- l’introduction d’un modèle de réunions plus souple, compatible avec :
+  - réunion autonome,
+  - réunion projet,
+  - réunion d’équipe ;
+- le maintien et la consolidation de l’intégration Jitsi ;
+- le branchement des notifications in-app sur les événements réunion ;
+- l’ajout des emails d’invitation réunion ;
+- la remise en cohérence du front de création, de liste et de détail des réunions ;
+- un passage final de polish UI sur la page `/meetings`.
+
+## 19.2 Principes fonctionnels retenus
+
+### 19.2.1 Réunion et contexte métier
+
+La cible V2 a été consolidée autour des règles suivantes :
+
+- une réunion peut être liée à un projet ;
+- une réunion peut cibler une équipe spécifique ;
+- une réunion peut aussi exister sans projet ni équipe comme **réunion autonome** ;
+- le projet reste le contexte d’autorisation principal lorsqu’il est renseigné ;
+- le cas autonome repose sur le créateur et les participants explicites.
+
+Cette interprétation permet de conserver la souplesse du modèle V2 tout en restant cohérent avec la cible où `TeamMeeting.projectId` est maintenu optionnel.
+
+### 19.2.2 Distinction des niveaux d’accès
+
+Le lot a clarifié la séparation entre trois niveaux d’accès :
+
+- **lecture** d’une réunion ;
+- **participation** effective à la visioconférence ;
+- **gestion** de la réunion.
+
+Cette distinction a été appliquée aussi bien :
+
+- côté backend ;
+- côté page détail ;
+- côté affichage des actions Jitsi ;
+- côté visibilité des réunions dans la liste.
+
+### 19.2.3 Réunions autonomes
+
+Le besoin d’un module Réunions réellement exploitable hors projet a conduit à retenir explicitement le cas des réunions autonomes.
+
+Décisions retenues :
+
+- une réunion autonome peut être créée sans projet ni équipe ;
+- le créateur peut la gérer ;
+- les participants explicites peuvent la consulter et la rejoindre ;
+- un utilisateur non invité ne peut ni la voir ni y accéder ;
+- ce comportement reste indépendant du système d’appartenance projet.
+
+### 19.2.4 Réunions projet et réunions d’équipe
+
+Pour les réunions liées à un projet, la logique de permissions repose désormais sur le moteur V2 de capabilities projet.
+
+Règles consolidées :
+
+- `OWNER` et `MANAGER` gèrent les réunions du projet ;
+- `VIEWER` peut consulter les réunions si `VIEW_MEETINGS` est accordé ;
+- `VIEWER` peut rejoindre la visio seulement si `JOIN_MEETINGS` est accordé ;
+- `MEMBER` peut consulter les réunions du projet et rejoindre la visio ;
+- une réunion ciblée sur une équipe n’est plus affichée inutilement aux membres non concernés lorsque cela crée de la confusion ;
+- un participant explicite conserve la visibilité et l’accès attendus.
+
+## 19.3 Évolutions du schéma et des types
+
+Le schéma Prisma et les types partagés ont été enrichis afin de supporter le modèle Réunions V2 finalisé.
+
+### 19.3.1 Schéma Prisma
+
+Les évolutions suivantes ont été stabilisées :
+
+- `TeamMeeting.teamId` rendu nullable ;
+- relation `TeamMeeting.team` rendue optionnelle ;
+- maintien de `TeamMeeting.projectId` optionnel ;
+- exploitation réelle de `MeetingParticipant` comme table métier d’invitation explicite.
+
+Cette évolution permet désormais de supporter les trois cas :
+
+- réunion autonome ;
+- réunion projet ;
+- réunion projet ciblée équipe.
+
+### 19.3.2 Types partagés
+
+Les types front et back ont été mis à jour afin d’exposer :
+
+- les participants explicites ;
+- les enregistrements enrichis avec auteur ;
+- les booléens de capacités de la page détail :
+  - `canManageMeeting`
+  - `canJoinMeeting`.
+
+Le type `TeamMeeting` a également été réaligné avec les payloads réels renvoyés par les actions serveur.
+
+## 19.4 Réalignement des accès et permissions
+
+Une partie importante du lot a consisté à sortir définitivement d’une logique purement centrée sur l’ancien rôle d’équipe.
+
+### 19.4.1 Helper d’accès réunion
+
+Un helper dédié `meeting-access` a été consolidé afin de résoudre le contexte d’accès d’une réunion en fonction :
+
+- du projet direct si présent ;
+- du projet de l’équipe si nécessaire ;
+- ou du caractère autonome de la réunion.
+
+Ce helper permet désormais de centraliser :
+
+- la lecture ;
+- la participation ;
+- la gestion ;
+- l’ajout d’enregistrements.
+
+### 19.4.2 Réunions projet
+
+Lorsqu’une réunion est liée à un projet, les droits sont évalués via les capabilities projet V2.
+
+Les capacités exploitées dans ce lot sont notamment :
+
+- lecture de réunion ;
+- participation à la réunion ;
+- mise à jour de réunion ;
+- ajout d’enregistrement ;
+- création de réunion.
+
+### 19.4.3 Réunions autonomes
+
+Lorsqu’une réunion n’est liée à aucun projet, les règles suivantes sont appliquées :
+
+- le créateur peut lire, rejoindre et gérer ;
+- un participant explicite peut lire et rejoindre ;
+- un utilisateur non invité ne peut pas accéder à la réunion ;
+- les enregistrements et les actions de gestion restent réservés au créateur.
+
+### 19.4.4 Alignement des booléens de capacité pour le front
+
+La page détail ne dépend plus uniquement de `currentUserTeamRole`.
+
+Le backend renvoie maintenant directement :
+
+- `canManageMeeting`
+- `canJoinMeeting`
+
+Ce changement a permis de remettre en cohérence :
+
+- les actions de gestion des participants ;
+- les actions Jitsi ;
+- l’édition des notes ;
+- la gestion des enregistrements ;
+- le comportement de la page détail sur les réunions autonomes et projet.
+
+## 19.5 Participants explicites
+
+Le lot a mis en exploitation réelle la table `MeetingParticipant`.
+
+### 19.5.1 Création de réunion avec participants
+
+La création d’une réunion accepte désormais une liste de participants explicites.
+
+Règles retenues :
+
+- exclusion du créateur de la liste des participants explicites ;
+- validation par appartenance projet lorsqu’un projet est lié ;
+- validation par existence d’utilisateurs applicatifs pour les réunions autonomes.
+
+### 19.5.2 Mise à jour des participants après création
+
+La page détail réunion permet désormais d’ajouter et retirer des participants après création.
+
+Évolutions apportées :
+
+- récupération des participants éligibles ;
+- sauvegarde des ajouts et retraits ;
+- notification des nouveaux participants ajoutés ;
+- mise à jour cohérente de l’état de la réunion.
+
+### 19.5.3 Participants éligibles selon le contexte
+
+Deux comportements distincts ont été stabilisés :
+
+- **réunion projet** :
+  - membres du projet ;
+  - `VIEWER` uniquement si `JOIN_MEETINGS` ;
+- **réunion autonome** :
+  - utilisateurs valides de l’application.
+
+### 19.5.4 Exclusion du créateur
+
+Le créateur de la réunion a été exclu :
+
+- de la liste des participants éligibles ;
+- du payload de création ;
+- du payload de mise à jour.
+
+Cette règle a été appliquée à la fois :
+
+- côté front ;
+- côté backend.
+
+## 19.6 Notifications et invitations réunion
+
+Le lot a prolongé le socle notifications in-app du lot 6 sur le domaine Réunions.
+
+### 19.6.1 Notifications in-app réunion
+
+Les événements suivants ont été activés ou consolidés :
+
+- `MEETING_INVITED`
+- `MEETING_UPDATED`
+
+Ces notifications sont utilisées notamment lors de :
+
+- la création d’une réunion avec participants ;
+- l’ajout de nouveaux participants ;
+- la mise à jour des notes ;
+- le changement de statut ;
+- la génération / régénération / suppression du lien Jitsi.
+
+### 19.6.2 Liens profonds
+
+Le système de deep links du centre de notifications a été validé pour les réunions.
+
+Les notifications réunion renvoient désormais vers :
+
+- `/meetings/[meetingId]`
+
+grâce au `meetingId` présent dans les métadonnées.
+
+### 19.6.3 Emails d’invitation réunion
+
+Le lot a ajouté un envoi d’email en complément des notifications in-app, conformément à la cible V2.
+
+Un helper dédié a été ajouté dans `lib/email.ts` afin d’envoyer un email d’invitation contenant :
+
+- le titre de la réunion ;
+- la date et l’horaire ;
+- la durée prévue ;
+- le contexte projet ou autonome ;
+- le lien direct vers la réunion dans l’application ;
+- le lien de visioconférence lorsqu’il existe.
+
+Cet envoi est branché :
+
+- lors de la création d’une réunion avec participants ;
+- lors de l’ajout de nouveaux participants après création.
+
+La logique a été conservée **non bloquante**, dans le même esprit que les emails liés au domaine Tâches.
+
+## 19.7 Réalignement des actions serveur `meetings`
+
+Le fichier `app/actions/meetings.ts` a été fortement révisé afin de refléter la sémantique V2 consolidée.
+
+### 19.7.1 Création de réunion
+
+La création de réunion supporte désormais :
+
+- `projectId` optionnel ;
+- `teamId` optionnel ;
+- `participantUserIds` ;
+- `notes` ;
+- `durationMinutes` ;
+- `externalUrl`.
+
+La logique de création :
+
+- déduit le projet depuis l’équipe si nécessaire ;
+- autorise les réunions autonomes ;
+- vérifie la cohérence équipe / projet ;
+- persiste les participants explicites.
+
+### 19.7.2 Lecture de la liste des réunions
+
+`getMeetingsForCurrentUser()` a été revu afin de mieux distinguer les cas métier.
+
+Le comportement final prend en compte :
+
+- les réunions projet lisibles ;
+- les réunions d’équipe réellement pertinentes pour l’utilisateur ;
+- les réunions autonomes créées par l’utilisateur ;
+- les réunions autonomes où l’utilisateur est participant explicite.
+
+Cette évolution a notamment permis d’éviter qu’un membre voie dans `/meetings` des réunions d’équipe non pertinentes.
+
+### 19.7.3 Détail réunion
+
+`getMeetingDetails()` a été enrichie afin de retourner :
+
+- projet ;
+- équipe ;
+- créateur ;
+- participants enrichis ;
+- enregistrements enrichis ;
+- `canManageMeeting` ;
+- `canJoinMeeting`.
+
+### 19.7.4 Notes, statut et enregistrements
+
+Les actions suivantes ont été réalignées sur les nouvelles règles d’accès :
+
+- `updateMeetingNotes()`
+- `updateMeetingStatus()`
+- `addMeetingRecording()`
+- `removeMeetingRecording()`
+
+Elles produisent également les notifications réunion correspondantes lorsque pertinent.
+
+### 19.7.5 Participants
+
+L’action `updateMeetingParticipants()` permet désormais :
+
+- l’ajout de participants ;
+- le retrait de participants ;
+- la notification des nouveaux invités ;
+- l’envoi des emails d’invitation associés.
+
+### 19.7.6 Visioconférence Jitsi
+
+Les actions suivantes ont été consolidées :
+
+- `generateJitsiMeetingLink()`
+- `regenerateJitsiMeetingLink()`
+- `removeMeetingVideoLink()`
+
+Le comportement Jitsi reste compatible avec l’existant, avec une gestion plus fine des droits de consultation et de participation.
+
+## 19.8 Réalignement du front — page de création et page détail
+
+Le front a été remis en cohérence avec la nouvelle souplesse du module Réunions.
+
+### 19.8.1 Page `/meetings` — création
+
+Le formulaire de création a été refondu selon la logique :
+
+- projet éventuel ;
+- équipe concernée optionnelle ;
+- participants explicites optionnels.
+
+Évolutions apportées :
+
+- possibilité de créer une réunion autonome ;
+- chargement des projets associés directement, indépendamment de l’existence d’une équipe ;
+- équipe devenue optionnelle ;
+- ajout d’une sélection de participants à la création ;
+- ajout d’une recherche de participants ;
+- maintien du responsive.
+
+### 19.8.2 Page `/meetings/[meetingId]` — détail
+
+La page détail réunion a été fortement enrichie.
+
+Évolutions principales :
+
+- affichage des participants explicites ;
+- mise à jour des participants après création ;
+- recherche dans la liste des participants éligibles ;
+- bouton pour afficher / masquer la zone de gestion des participants ;
+- exclusion du créateur de la liste sélectionnable ;
+- réactivation cohérente du bloc Jitsi selon les permissions réelles ;
+- masquage du lien Jitsi lorsqu’un utilisateur peut consulter la réunion sans pouvoir la rejoindre ;
+- édition des notes et des enregistrements selon `canManageMeeting`.
+
+## 19.9 Polish UI de la page liste des réunions
+
+Une phase de polish a été menée sur la page `/meetings` afin de mieux absorber la richesse fonctionnelle du lot.
+
+### 19.9.1 Filtres et recherche
+
+La page a été enrichie avec :
+
+- une recherche texte ;
+- un filtre par statut ;
+- un filtre par type de réunion ;
+- un filtre temporel.
+
+### 19.9.2 Clarification des types de réunion
+
+Les libellés ont été revus afin de distinguer plus clairement :
+
+- réunion autonome ;
+- réunion projet ;
+- réunion d’équipe.
+
+### 19.9.3 Lisibilité de la liste
+
+Les cartes de réunions ont été améliorées avec :
+
+- badges de statut ;
+- badges de type ;
+- libellés plus explicites pour le projet et l’équipe ;
+- maintien du responsive.
+
+## 19.10 Vérifications effectuées
+
+Les vérifications suivantes ont été menées au fil du lot :
+
+- validations Prisma (`format`, `validate`, `generate`) ;
+- migrations Prisma appliquées avec succès ;
+- builds `npm run build` exécutés avec succès après chaque étape sensible ;
+- validation de la création d’une réunion :
+  - autonome,
+  - projet,
+  - projet + équipe ;
+- validation de l’affichage des réunions autonomes dans la liste ;
+- validation de la page détail réunion ;
+- validation de la mise à jour des participants après création ;
+- validation de la recherche de participants ;
+- validation des notifications réunion in-app ;
+- validation des emails d’invitation réunion ;
+- validation du comportement Jitsi ;
+- validation des deep links notifications → réunion ;
+- validation du comportement responsive sur la création, la liste et le détail ;
+- validation finale des permissions sur les cas suivants :
+  - `VIEWER` avec `VIEW_MEETINGS` ;
+  - `VIEWER` avec `JOIN_MEETINGS` ;
+  - `MEMBER` sur réunion projet ;
+  - créateur de réunion autonome ;
+  - participant explicite d’une réunion autonome ;
+  - utilisateur non invité à une réunion autonome.
+
+## 19.11 Résultat obtenu
+
+À l’issue du lot 7, le module **Réunions** peut être considéré comme réaligné sur la V2 sur le périmètre traité.
+
+Les éléments suivants sont désormais stabilisés :
+
+- réunions autonomes ;
+- réunions liées à un projet ;
+- réunions ciblées sur une équipe ;
+- participants explicites ;
+- gestion des participants après création ;
+- séparation claire entre lecture, participation et gestion ;
+- exploitation de `VIEW_MEETINGS` et `JOIN_MEETINGS` ;
+- Jitsi cohérent avec les permissions réelles ;
+- notifications in-app réunion ;
+- emails d’invitation réunion ;
+- page détail stabilisée ;
+- page liste enrichie et plus lisible.
+
+Ce lot clôt le réalignement principal du domaine Réunions dans la migration V2 consolidée.
+
+## 19.12 Fichiers particulièrement concernés par ce lot
+
+Cette étape a particulièrement touché :
+
+- `prisma/schema.prisma`
+- `type.ts`
+- `lib/meeting-access.ts`
+- `lib/email.ts`
+- `app/actions/meetings.ts`
+- `app/actions/index.ts`
+- `app/actions/notifications.ts`
+- `app/meetings/page.tsx`
+- `app/meetings/[meetingId]/page.tsx`
+- `Documentation_Migration_V1_V2.md`

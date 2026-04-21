@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import type { OwnerDashboardProjectCard } from "@/type";
-import { ArrowRight, AlertTriangle, FolderKanban, Users } from "lucide-react";
+import { ArrowRight, AlertTriangle, FolderKanban, Users, CalendarClock } from "lucide-react";
 import OwnerDashboardProjectInsights from "./OwnerDashboardProjectInsights";
+import { PROJECT_STATUS_LABELS } from "@/lib/project-status";
 
 type Props = {
   card: OwnerDashboardProjectCard;
 };
+
+function formatOptionalDate(value?: Date | string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("fr-FR");
+}
 
 function getHealthBadgeClasses(color: OwnerDashboardProjectCard["healthColor"]) {
   switch (color) {
@@ -48,7 +54,10 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
           </div>
 
           <p className="mt-2 text-sm opacity-70">
-            Statut projet : <span className="font-medium">{card.projectStatus}</span>
+            Statut projet :{" "}
+            <span className="font-medium">
+              {PROJECT_STATUS_LABELS[card.projectStatus]}
+            </span>
           </p>
         </div>
 
@@ -72,6 +81,36 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
           <p className="mt-2 text-3xl font-bold">{card.progressPercent}%</p>
         </div>
       </div>
+
+      {(card.startDate || card.endDate) && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-base-300 p-3 text-sm">
+            <div className="flex items-center gap-2 opacity-70">
+              <CalendarClock className="h-4 w-4" />
+              <span>Début</span>
+            </div>
+            <p className="mt-1 font-medium">{formatOptionalDate(card.startDate)}</p>
+          </div>
+
+          <div className="rounded-lg border border-base-300 p-3 text-sm">
+            <div className="flex items-center gap-2 opacity-70">
+              <CalendarClock className="h-4 w-4" />
+              <span>Échéance</span>
+            </div>
+            <p className="mt-1 font-medium">{formatOptionalDate(card.endDate)}</p>
+          </div>
+        </div>
+      )}
+
+      {card.alerts[0] && (
+        <div className="mt-4 rounded-lg border border-base-300 p-3 text-sm">
+          <div className="mb-1 flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4" />
+            <span>Alerte principale</span>
+          </div>
+          <p>{card.alerts[0].message}</p>
+        </div>
+      )}
 
       <div className="mt-4 space-y-3">
         <div>
@@ -164,6 +203,25 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
           </div>
         )}
       </div>
+
+      {card.recentActivity.length > 0 && (
+        <div className="mt-5">
+          <h3 className="mb-2 text-sm font-semibold">Activité récente</h3>
+          <div className="space-y-2">
+            {card.recentActivity.slice(0, 3).map((log) => (
+              <div
+                key={log.id}
+                className="rounded-lg border border-base-300 p-3 text-sm"
+              >
+                <p>{log.message}</p>
+                <p className="mt-1 text-xs opacity-60">
+                  {new Date(log.createdAt).toLocaleString("fr-FR")}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <OwnerDashboardProjectInsights insights={card.insights} />
 

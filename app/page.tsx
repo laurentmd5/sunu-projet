@@ -116,9 +116,16 @@ export default function Home() {
 
               {dashboard.projects.length > 0 ? (
                 <div className="grid gap-6 xl:grid-cols-2">
-                  {dashboard.projects.map((card) => (
-                    <OwnerDashboardProjectCard key={card.projectId} card={card} />
-                  ))}
+                  {[...dashboard.projects]
+                    .sort((a, b) => {
+                      const colorWeight = { RED: 0, ORANGE: 1, GREEN: 2 };
+                      const colorDiff = colorWeight[a.healthColor] - colorWeight[b.healthColor];
+                      if (colorDiff !== 0) return colorDiff;
+                      return a.healthScore - b.healthScore;
+                    })
+                    .map((card) => (
+                      <OwnerDashboardProjectCard key={card.projectId} card={card} />
+                    ))}
                 </div>
               ) : (
                 <EmptyState

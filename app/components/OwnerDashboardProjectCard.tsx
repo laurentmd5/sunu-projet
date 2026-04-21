@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { OwnerDashboardProjectCard } from "@/type";
 import { ArrowRight, AlertTriangle, FolderKanban, Users } from "lucide-react";
+import OwnerDashboardProjectInsights from "./OwnerDashboardProjectInsights";
 
 type Props = {
   card: OwnerDashboardProjectCard;
@@ -135,9 +136,12 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
       <div className="mt-4 flex items-center gap-2 text-sm opacity-80">
         <Users className="h-4 w-4" />
         <span>
-          {card.activeMembers7d} membre(s) actifs sur {card.membersCount}
+          {card.activeMembers7d} membre(s) actifs sur {card.executableMembersCount} exécutant(s)
         </span>
       </div>
+      <p className="mt-1 text-xs opacity-60">
+        {card.membersCount} membre(s) au total dans le projet
+      </p>
 
       <div className="mt-4">
         <h3 className="mb-2 text-sm font-semibold">Alertes</h3>
@@ -160,6 +164,8 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
           </div>
         )}
       </div>
+
+      <OwnerDashboardProjectInsights insights={card.insights} />
 
       <div className="mt-5">
         <Link href={`/project/${card.projectId}`} className="btn btn-primary btn-sm">

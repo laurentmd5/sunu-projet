@@ -326,6 +326,34 @@ export type OwnerDashboardRecentActivityItem = {
     };
 };
 
+export type OwnerDashboardMemberMetric = {
+    userId: string;
+    name: string | null;
+    email: string;
+    assignedTasks: number;
+    completedTasks: number;
+    overdueTasks: number;
+    completionRatePercent: number;
+    performanceScore: number;
+    isActive7d: boolean;
+};
+
+export type OwnerDashboardTeamMetric = {
+    teamId: string;
+    teamName: string;
+    membersCount: number;
+    totalTasks: number;
+    completedTasks: number;
+    overdueTasks: number;
+    progressPercent: number;
+};
+
+export type OwnerDashboardProjectInsight = {
+    topMembers: OwnerDashboardMemberMetric[];
+    strugglingMembers: OwnerDashboardMemberMetric[];
+    teamMetrics: OwnerDashboardTeamMetric[];
+};
+
 export type OwnerDashboardProjectCard = {
     projectId: string;
     projectName: string;
@@ -333,6 +361,7 @@ export type OwnerDashboardProjectCard = {
     startDate: Date | string | null;
     endDate: Date | string | null;
     membersCount: number;
+    executableMembersCount: number;
     activeMembers7d: number;
     totalTasks: number;
     activeTasks: number;
@@ -347,6 +376,7 @@ export type OwnerDashboardProjectCard = {
     healthColor: OwnerDashboardHealthColor;
     alerts: OwnerDashboardAlert[];
     recentActivity: OwnerDashboardRecentActivityItem[];
+    insights?: OwnerDashboardProjectInsight;
 };
 
 export type OwnerDashboardOverview = {

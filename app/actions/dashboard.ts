@@ -9,7 +9,11 @@ import {
   isTaskDueSoon,
   isTaskOverdue,
 } from "@/lib/dashboard";
-import { OwnerDashboardOverview, OwnerDashboardProjectCard } from "@/type";
+import {
+  OwnerDashboardOverview,
+  OwnerDashboardProjectCard,
+  OwnerDashboardProjectInsight,
+} from "@/type";
 
 export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOverview> {
   const user = await getCurrentDbUser();
@@ -29,6 +33,14 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       users: {
         select: {
           userId: true,
+          role: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
       },
       tasks: {
@@ -37,6 +49,19 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
           status: true,
           dueDate: true,
           milestoneId: true,
+          userId: true,
+          teamId: true,
+        },
+      },
+      teams: {
+        select: {
+          id: true,
+          name: true,
+          members: {
+            select: {
+              userId: true,
+            },
+          },
         },
       },
       milestones: {
@@ -103,11 +128,101 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
 
     const membersCount = project.users.length;
 
-    const activeMembersSet = new Set(
-      project.activityLogs.map((log) => log.actorUserId)
+    // Filter out VIEWERS for executable metrics
+    const executableMembers = project.users.filter(
+      (membership) => membership.role !== "VIEWER"
     );
+    const executableMembersCount = executableMembers.length;
+
+    const executableMemberIds = new Set(
+      executableMembers.map((membership) => membership.user.id)
+    );
+
+    const activeMembersSet = new Set(
+      project.activityLogs
+        .map((log) => log.actorUserId)
+        .filter((actorUserId) => executableMemberIds.has(actorUserId))
+    );
+
     const activeMembers7d = activeMembersSet.size;
-    const inactiveMembersCount = Math.max(0, membersCount - activeMembers7d);
+    const inactiveMembersCount = Math.max(0, executableMembersCount - activeMembers7d);
+
+    // Member metrics calculation (exclude VIEWERS)
+    const memberMetrics = executableMembers.map((membership) => {
+      const memberTasks = project.tasks.filter(
+        (task) => task.userId === membership.user.id
+      );
+      const assignedTasks = memberTasks.length;
+      const completedMemberTasks = memberTasks.filter(
+        (task) => task.status === "DONE"
+      ).length;
+      const overdueMemberTasks = memberTasks.filter((task) =>
+        isTaskOverdue(task.dueDate, task.status, now)
+      ).length;
+
+      const completionRatePercent =
+        assignedTasks > 0
+          ? Math.round((completedMemberTasks / assignedTasks) * 100)
+          : 0;
+
+      const isActive7d = activeMembersSet.has(membership.user.id);
+
+      const performanceScore = Math.max(
+        0,
+        Math.round(
+          completionRatePercent - overdueMemberTasks * 10 + (isActive7d ? 10 : 0)
+        )
+      );
+
+      return {
+        userId: membership.user.id,
+        name: membership.user.name,
+        email: membership.user.email,
+        assignedTasks,
+        completedTasks: completedMemberTasks,
+        overdueTasks: overdueMemberTasks,
+        completionRatePercent,
+        performanceScore,
+        isActive7d,
+      };
+    });
+
+    const topMembers = [...memberMetrics]
+      .filter((member) => member.assignedTasks > 0)
+      .sort((a, b) => b.performanceScore - a.performanceScore)
+      .slice(0, 3);
+
+    const strugglingMembers = [...memberMetrics]
+      .filter((member) => member.overdueTasks > 0 || !member.isActive7d)
+      .sort((a, b) => b.overdueTasks - a.overdueTasks)
+      .slice(0, 3);
+
+    // Team metrics calculation
+    const teamMetrics = (project.teams || []).map((team) => {
+      const teamTasks = project.tasks.filter((task) => task.teamId === team.id);
+      const totalTeamTasks = teamTasks.length;
+      const completedTeamTasks = teamTasks.filter(
+        (task) => task.status === "DONE"
+      ).length;
+      const overdueTeamTasks = teamTasks.filter((task) =>
+        isTaskOverdue(task.dueDate, task.status, now)
+      ).length;
+
+      const progressTeamPercent =
+        totalTeamTasks > 0
+          ? Math.round((completedTeamTasks / totalTeamTasks) * 100)
+          : 0;
+
+      return {
+        teamId: team.id,
+        teamName: team.name,
+        membersCount: team.members.length,
+        totalTasks: totalTeamTasks,
+        completedTasks: completedTeamTasks,
+        overdueTasks: overdueTeamTasks,
+        progressPercent: progressTeamPercent,
+      };
+    });
 
     const progressPercent = computeProjectProgressPercent(completedTasks, totalTasks);
 
@@ -115,7 +230,7 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       overdueTasks,
       activeTasksWithDueDate,
       activeMembers7d,
-      membersCount,
+      membersCount: executableMembersCount,
       progressPercent,
       startDate: project.startDate,
       endDate: project.endDate,
@@ -153,6 +268,7 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       startDate: project.startDate,
       endDate: project.endDate,
       membersCount,
+      executableMembersCount,
       activeMembers7d,
       totalTasks,
       activeTasks,
@@ -173,6 +289,11 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
         createdAt: log.createdAt,
         actor: log.actor,
       })),
+      insights: {
+        topMembers,
+        strugglingMembers,
+        teamMetrics,
+      } satisfies OwnerDashboardProjectInsight,
     };
   });
 

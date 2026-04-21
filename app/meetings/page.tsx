@@ -16,6 +16,7 @@ import {
     ArrowRight,
     CalendarDays,
     FileText,
+    FolderKanban,
     FolderPlus,
     Link2,
     UsersRound,
@@ -36,6 +37,10 @@ type EligibleMeetingParticipant = {
     email: string;
     role: "OWNER" | "MANAGER" | "VIEWER" | "MEMBER" | null;
 };
+
+type MeetingStatusFilter = "ALL" | "SCHEDULED" | "COMPLETED" | "CANCELLED";
+type MeetingTypeFilter = "ALL" | "STANDALONE" | "PROJECT" | "TEAM";
+type MeetingTimeFilter = "ALL" | "UPCOMING" | "PAST";
 
 const STATUS_LABELS = {
     SCHEDULED: "Planifiée",
@@ -58,8 +63,10 @@ const page = () => {
     const [creating, setCreating] = useState(false);
     const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
 
-    const [teamFilter, setTeamFilter] = useState("");
-    const [statusFilter, setStatusFilter] = useState("");
+    const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState<MeetingStatusFilter>("ALL");
+    const [typeFilter, setTypeFilter] = useState<MeetingTypeFilter>("ALL");
+    const [timeFilter, setTimeFilter] = useState<MeetingTimeFilter>("ALL");
 
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -109,6 +116,44 @@ const page = () => {
         fetchProjects();
     }, []);
 
+    function getMeetingType(meeting: TeamMeeting): MeetingTypeFilter {
+        if (!meeting.project && !meeting.team) return "STANDALONE";
+        if (meeting.team) return "TEAM";
+        return "PROJECT";
+    }
+
+    function getMeetingTypeLabel(meeting: TeamMeeting) {
+        if (!meeting.project && !meeting.team) return "Réunion autonome";
+        if (meeting.team) return "Réunion d'équipe";
+        return "Réunion projet";
+    }
+
+    function getMeetingStatusLabel(status: TeamMeeting["status"]) {
+        switch (status) {
+            case "SCHEDULED":
+                return "Planifiée";
+            case "COMPLETED":
+                return "Terminée";
+            case "CANCELLED":
+                return "Annulée";
+            default:
+                return status;
+        }
+    }
+
+    function getMeetingStatusBadgeClass(status: TeamMeeting["status"]) {
+        switch (status) {
+            case "SCHEDULED":
+                return "badge-info";
+            case "COMPLETED":
+                return "badge-success";
+            case "CANCELLED":
+                return "badge-error";
+            default:
+                return "badge-outline";
+        }
+    }
+
     useEffect(() => {
         fetchEligibleParticipants(selectedProjectId || null);
 
@@ -120,12 +165,36 @@ const page = () => {
     }, [selectedProjectId]);
 
     const filteredMeetings = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        const now = new Date();
+
         return meetings.filter((meeting) => {
-            const teamMatch = !teamFilter || meeting.teamId === teamFilter;
-            const statusMatch = !statusFilter || meeting.status === statusFilter;
-            return teamMatch && statusMatch;
+            const meetingDate = new Date(meeting.scheduledAt);
+            const type = getMeetingType(meeting);
+
+            const haystack = [
+                meeting.title,
+                meeting.description || "",
+                meeting.project?.name || "",
+                meeting.team?.name || "",
+                meeting.createdBy?.name || "",
+                meeting.createdBy?.email || "",
+            ]
+                .join(" ")
+                .toLowerCase();
+
+            const matchesSearch = !query || haystack.includes(query);
+            const matchesStatus =
+                statusFilter === "ALL" || meeting.status === statusFilter;
+            const matchesType = typeFilter === "ALL" || type === typeFilter;
+            const matchesTime =
+                timeFilter === "ALL" ||
+                (timeFilter === "UPCOMING" && meetingDate >= now) ||
+                (timeFilter === "PAST" && meetingDate < now);
+
+            return matchesSearch && matchesStatus && matchesType && matchesTime;
         });
-    }, [meetings, teamFilter, statusFilter]);
+    }, [meetings, search, statusFilter, typeFilter, timeFilter]);
 
 
     const filteredTeamsForProject = useMemo(() => {
@@ -257,42 +326,51 @@ const page = () => {
                     </button>
                 </div>
 
-                <div className="rounded-xl border border-base-300 p-4 md:p-5">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                            <label className="label">
-                                <span className="label-text">Filtrer par équipe</span>
-                            </label>
-                            <select
-                                className="select select-bordered w-full"
-                                value={teamFilter}
-                                onChange={(e) => setTeamFilter(e.target.value)}
-                            >
-                                <option value="">Toutes les équipes</option>
-                                {teams.map((team) => (
-                                    <option key={team.id} value={team.id}>
-                                        {team.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                <div className="rounded-xl border border-base-300 p-4 shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                        <input
+                            type="text"
+                            className="input input-bordered w-full"
+                            placeholder="Rechercher par titre, projet ou équipe"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
 
-                        <div>
-                            <label className="label">
-                                <span className="label-text">Filtrer par statut</span>
-                            </label>
-                            <select
-                                className="select select-bordered w-full"
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                            >
-                                <option value="">Tous les statuts</option>
-                                <option value="SCHEDULED">Planifiée</option>
-                                <option value="COMPLETED">Terminée</option>
-                                <option value="CANCELLED">Annulée</option>
-                            </select>
-                        </div>
+                        <select
+                            className="select select-bordered w-full"
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value as MeetingStatusFilter)}
+                        >
+                            <option value="ALL">Tous les statuts</option>
+                            <option value="SCHEDULED">Planifiées</option>
+                            <option value="COMPLETED">Terminées</option>
+                            <option value="CANCELLED">Annulées</option>
+                        </select>
+
+                        <select
+                            className="select select-bordered w-full"
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value as MeetingTypeFilter)}
+                        >
+                            <option value="ALL">Tous les types</option>
+                            <option value="STANDALONE">Autonomes</option>
+                            <option value="PROJECT">Liées à un projet</option>
+                            <option value="TEAM">Liées à une équipe</option>
+                        </select>
+
+                        <select
+                            className="select select-bordered w-full"
+                            value={timeFilter}
+                            onChange={(e) => setTimeFilter(e.target.value as MeetingTimeFilter)}
+                        >
+                            <option value="ALL">Toutes les périodes</option>
+                            <option value="UPCOMING">À venir</option>
+                            <option value="PAST">Passées</option>
+                        </select>
                     </div>
+                    <p className="text-sm opacity-70 mt-3">
+                        {filteredMeetings.length} réunion{filteredMeetings.length > 1 ? "s" : ""} affichée{filteredMeetings.length > 1 ? "s" : ""}
+                    </p>
                 </div>
 
                 <dialog id="create_meeting_modal" className="modal">
@@ -487,31 +565,31 @@ const page = () => {
                                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <h2 className="text-lg font-semibold break-words">
-                                                    {meeting.title}
-                                                </h2>
-                                                <span className={`badge ${STATUS_BADGE_CLASS[meeting.status as keyof typeof STATUS_BADGE_CLASS]}`}>
-                                                    {STATUS_LABELS[meeting.status as keyof typeof STATUS_LABELS]}
+                                                <h2 className="text-lg font-semibold break-words">{meeting.title}</h2>
+
+                                                <span className={`badge ${getMeetingStatusBadgeClass(meeting.status)}`}>
+                                                    {getMeetingStatusLabel(meeting.status)}
+                                                </span>
+
+                                                <span className="badge badge-outline">
+                                                    {getMeetingTypeLabel(meeting)}
                                                 </span>
                                             </div>
 
-                                            <div className="mt-2 flex flex-col gap-1 text-sm opacity-75">
+                                            <div className="mt-3 flex flex-col gap-2 text-sm opacity-75">
                                                 <p className="flex items-center gap-2">
-                                                    <UsersRound className="w-4 h-4" />
-                                                    {meeting.team?.name ? `Équipe : ${meeting.team.name}` : "Réunion sans équipe"}
+                                                    <FolderKanban className="w-4 h-4" />
+                                                    {meeting.project?.name
+                                                        ? `Projet : ${meeting.project.name}`
+                                                        : "Réunion autonome"}
                                                 </p>
 
-                                                {meeting.project ? (
-                                                    <p className="flex items-center gap-2">
-                                                        <FolderPlus className="w-4 h-4" />
-                                                        Projet : {meeting.project.name}
-                                                    </p>
-                                                ) : (
-                                                    <p className="flex items-center gap-2">
-                                                        <FolderPlus className="w-4 h-4" />
-                                                        Réunion autonome
-                                                    </p>
-                                                )}
+                                                <p className="flex items-center gap-2">
+                                                    <UsersRound className="w-4 h-4" />
+                                                    {meeting.team?.name
+                                                        ? `Équipe : ${meeting.team.name}`
+                                                        : "Aucune équipe spécifique"}
+                                                </p>
 
                                                 <p className="flex items-center gap-2">
                                                     <CalendarDays className="w-4 h-4" />

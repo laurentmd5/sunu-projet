@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Wrapper from "@/app/components/Wrapper";
 import {
     addMeetingRecording,
@@ -79,6 +79,8 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const [eligibleParticipants, setEligibleParticipants] = useState<EligibleMeetingParticipant[]>([]);
     const [selectedParticipantUserIds, setSelectedParticipantUserIds] = useState<string[]>([]);
     const [savingParticipants, setSavingParticipants] = useState(false);
+    const [showParticipantEditor, setShowParticipantEditor] = useState(false);
+    const [participantSearch, setParticipantSearch] = useState("");
 
     const fetchEligibleParticipants = async (id: string) => {
         try {
@@ -102,7 +104,9 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
             setMeeting(typedMeeting);
             setNotes(typedMeeting.notes || "");
             setSelectedParticipantUserIds(
-                (typedMeeting.participants || []).map((participant) => participant.userId)
+                (typedMeeting.participants || [])
+                    .map((participant) => participant.userId)
+                    .filter((userId) => userId !== typedMeeting.createdBy?.id)
             );
         } catch (error) {
             toast.error(
@@ -299,6 +303,21 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
         }
     };
 
+    const filteredEligibleParticipants = useMemo(() => {
+        const query = participantSearch.trim().toLowerCase();
+
+        if (!query) {
+            return eligibleParticipants;
+        }
+
+        return eligibleParticipants.filter((participant) => {
+            const name = participant.name?.toLowerCase() ?? "";
+            const email = participant.email.toLowerCase();
+
+            return name.includes(query) || email.includes(query);
+        });
+    }, [eligibleParticipants, participantSearch]);
+
     const handleToggleParticipant = (userId: string) => {
         setSelectedParticipantUserIds((prev) =>
             prev.includes(userId)
@@ -480,54 +499,93 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                     )}
 
                     {canManageMeeting ? (
-                        <>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {eligibleParticipants.map((participant) => {
-                                    const checked = selectedParticipantUserIds.includes(participant.id);
-
-                                    return (
-                                        <label
-                                            key={participant.id}
-                                            className="flex items-start gap-3 rounded-lg border border-base-300 p-3 cursor-pointer hover:bg-base-200"
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                className="checkbox checkbox-sm mt-1"
-                                                checked={checked}
-                                                onChange={() => handleToggleParticipant(participant.id)}
-                                            />
-
-                                            <div className="min-w-0">
-                                                <p className="font-medium break-words">
-                                                    {participant.name || participant.email}
-                                                </p>
-                                                <p className="text-sm opacity-70 break-all">
-                                                    {participant.email}
-                                                </p>
-                                                <p className="text-xs opacity-60 mt-1">
-                                                    Rôle : {participant.role}
-                                                </p>
-                                            </div>
-                                        </label>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="mt-4 flex justify-end">
+                        <div className="space-y-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <button
                                     type="button"
-                                    className="btn btn-primary w-full sm:w-auto"
-                                    onClick={handleSaveParticipants}
-                                    disabled={savingParticipants}
+                                    className="btn btn-outline w-full sm:w-auto"
+                                    onClick={() => setShowParticipantEditor((prev) => !prev)}
                                 >
                                     <UserPlus className="w-4 h-4" />
-                                    Mettre à jour les participants
+                                    {showParticipantEditor
+                                        ? "Masquer la gestion des participants"
+                                        : "Gérer les participants"}
                                 </button>
+
+                                {showParticipantEditor ? (
+                                    <div className="text-xs opacity-60">
+                                        Le créateur de la réunion n'apparaît pas dans cette liste.
+                                    </div>
+                                ) : null}
                             </div>
-                        </>
+
+                            {showParticipantEditor ? (
+                                <div className="space-y-4">
+                                    <input
+                                        type="text"
+                                        className="input input-bordered w-full"
+                                        placeholder="Rechercher un participant par nom ou email"
+                                        value={participantSearch}
+                                        onChange={(e) => setParticipantSearch(e.target.value)}
+                                    />
+
+                                    {filteredEligibleParticipants.length > 0 ? (
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-[28rem] overflow-y-auto pr-1">
+                                            {filteredEligibleParticipants.map((participant) => {
+                                                const checked = selectedParticipantUserIds.includes(participant.id);
+
+                                                return (
+                                                    <label
+                                                        key={participant.id}
+                                                        className="flex items-start gap-3 rounded-lg border border-base-300 p-3 cursor-pointer hover:bg-base-200"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            className="checkbox checkbox-sm mt-1"
+                                                            checked={checked}
+                                                            onChange={() => handleToggleParticipant(participant.id)}
+                                                        />
+
+                                                        <div className="min-w-0">
+                                                            <p className="font-medium break-words">
+                                                                {participant.name || participant.email}
+                                                            </p>
+                                                            <p className="text-sm opacity-70 break-all">
+                                                                {participant.email}
+                                                            </p>
+                                                            <p className="text-xs opacity-60 mt-1">
+                                                                {participant.role
+                                                                    ? `Rôle : ${participant.role}`
+                                                                    : "Utilisateur"}
+                                                            </p>
+                                                        </div>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
+                                            Aucun participant ne correspond à votre recherche.
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-end">
+                                        <button
+                                            type="button"
+                                            className="btn btn-primary w-full sm:w-auto"
+                                            onClick={handleSaveParticipants}
+                                            disabled={savingParticipants}
+                                        >
+                                            <UserPlus className="w-4 h-4" />
+                                            Mettre à jour les participants
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
                     ) : (
                         <p className="text-xs opacity-60">
-                            Seuls les propriétaires et managers peuvent modifier les participants.
+                            Seuls les utilisateurs autorisés à gérer la réunion peuvent modifier les participants.
                         </p>
                     )}
                 </div>

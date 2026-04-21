@@ -334,9 +334,13 @@ export async function createMeeting(input: {
     await assertCanCreateMeetingInProject(resolvedProjectId);
   }
 
+  const sanitizedParticipantUserIds = (parsed.participantUserIds ?? []).filter(
+    (participantUserId) => participantUserId !== user.id
+  );
+
   const uniqueParticipantUserIds = await assertParticipantsEligibleForMeeting({
     projectId: resolvedProjectId,
-    participantUserIds: parsed.participantUserIds,
+    participantUserIds: sanitizedParticipantUserIds,
   });
 
   const meeting = await prisma.teamMeeting.create({
@@ -951,9 +955,13 @@ export async function updateMeetingParticipants(
   const user = await getCurrentDbUser();
   const ctx = await assertCanManageMeeting(parsed.meetingId);
 
+  const sanitizedParticipantUserIds = parsed.participantUserIds.filter(
+    (userId) => userId !== ctx.meeting.createdById
+  );
+
   const uniqueParticipantUserIds = await assertParticipantsEligibleForMeeting({
     projectId: ctx.projectId,
-    participantUserIds: parsed.participantUserIds,
+    participantUserIds: sanitizedParticipantUserIds,
   });
 
   const existingParticipants = await prisma.meetingParticipant.findMany({
@@ -1092,12 +1100,14 @@ export async function getEligibleMeetingParticipants(meetingId: string) {
       },
     });
 
-    return users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: null,
-    }));
+    return users
+      .filter((user) => user.id !== ctx.meeting.createdById)
+      .map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: null,
+      }));
   }
 
   const members = await prisma.projectUser.findMany({
@@ -1128,6 +1138,10 @@ export async function getEligibleMeetingParticipants(meetingId: string) {
 
   return members
     .filter((member) => {
+      if (member.user.id === ctx.meeting.createdById) {
+        return false;
+      }
+
       if (member.role !== "VIEWER") {
         return true;
       }

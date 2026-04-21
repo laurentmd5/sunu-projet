@@ -274,11 +274,11 @@ model TeamMeeting {
   provider        MeetingProvider @default(NONE)
   externalUrl     String?
 
-  teamId      String  @db.VarChar(36)
+  teamId      String? @db.VarChar(36)
   projectId   String? @db.VarChar(36)
   createdById String  @db.VarChar(36)
 
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdBy User     @relation("CreatedMeetings", fields: [createdById], references: [id])
 

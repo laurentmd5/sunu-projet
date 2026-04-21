@@ -6,62 +6,61 @@ import prisma from "@/lib/prisma";
 import { ActionError, getCurrentDbUser } from "@/lib/permissions";
 import {
   assertCanAddMeetingRecording,
-  assertCanCreateMeetingInTeam,
+  assertCanCreateMeetingInProject,
   assertCanManageMeeting,
   assertCanReadMeeting,
-  getMeetingAccessContext,
 } from "@/lib/meeting-access";
 import { revalidatePath } from "next/cache";
 import { createNotifications } from "./notifications";
 
 const createMeetingSchema = z.object({
-    title: z
-        .string()
-        .trim()
-        .min(2, "Le titre doit contenir au moins 2 caractères.")
-        .max(120, "Le titre est trop long."),
-    description: z
-        .string()
-        .trim()
-        .max(2000, "La description est trop longue.")
-        .optional()
-        .or(z.literal("")),
-    notes: z
-        .string()
-        .trim()
-        .max(10000, "Le compte-rendu est trop long.")
-        .optional()
-        .or(z.literal("")),
-    scheduledAt: z.coerce.date(),
-    durationMinutes: z
-        .number()
-        .int()
-        .positive("La durée doit être positive.")
-        .max(1440, "La durée est invalide.")
-        .nullable()
-        .optional(),
-    teamId: z.string().trim().min(1, "Équipe invalide."),
-    projectId: z.string().trim().nullable().optional(),
-    externalUrl: z
-        .string()
-        .trim()
-        .url("Lien externe invalide.")
-        .nullable()
-        .optional()
-        .or(z.literal("")),
-    participantUserIds: z
-        .array(z.string().trim().min(1, "Participant invalide."))
-        .max(100, "Trop de participants.")
-        .optional()
-        .default([]),
+  title: z
+    .string()
+    .trim()
+    .min(2, "Le titre doit contenir au moins 2 caractères.")
+    .max(120, "Le titre est trop long."),
+  description: z
+    .string()
+    .trim()
+    .max(2000, "La description est trop longue.")
+    .optional()
+    .or(z.literal("")),
+  notes: z
+    .string()
+    .trim()
+    .max(10000, "Le compte-rendu est trop long.")
+    .optional()
+    .or(z.literal("")),
+  scheduledAt: z.coerce.date(),
+  durationMinutes: z
+    .number()
+    .int()
+    .positive("La durée doit être positive.")
+    .max(1440, "La durée est invalide.")
+    .nullable()
+    .optional(),
+  teamId: z.string().trim().nullable().optional(),
+  projectId: z.string().trim().nullable().optional(),
+  externalUrl: z
+    .string()
+    .trim()
+    .url("Lien externe invalide.")
+    .nullable()
+    .optional()
+    .or(z.literal("")),
+  participantUserIds: z
+    .array(z.string().trim().min(1, "Participant invalide."))
+    .max(100, "Trop de participants.")
+    .optional()
+    .default([]),
 });
 
 const updateMeetingNotesSchema = z.object({
-    meetingId: z.string().trim().min(1, "Réunion invalide."),
-    notes: z
-        .string()
-        .trim()
-        .max(10000, "Le compte-rendu est trop long."),
+  meetingId: z.string().trim().min(1, "Réunion invalide."),
+  notes: z
+    .string()
+    .trim()
+    .max(10000, "Le compte-rendu est trop long."),
 });
 
 const updateMeetingStatusSchema = z.object({
@@ -118,47 +117,79 @@ function buildJitsiRoomName(meetingTitle: string, meetingId: string) {
   return `sunu-projets-${base}-${shortId}-${suffix}`;
 }
 
-function revalidateMeetingPaths(meetingId: string, teamId: string) {
+function revalidateMeetingPaths(meetingId: string, teamId?: string | null) {
   revalidatePath("/meetings");
   revalidatePath(`/meetings/${meetingId}`);
-  revalidatePath(`/teams/${teamId}`);
+
+  if (teamId) {
+    revalidatePath(`/teams/${teamId}`);
+  }
 }
 
-async function assertParticipantsEligibleForMeeting(
-    teamId: string,
-    projectId: string,
-    participantUserIds: string[]
-) {
-    if (!participantUserIds.length) {
-        return [];
-    }
+async function assertParticipantsEligibleForMeeting(params: {
+  projectId?: string | null;
+  participantUserIds: string[];
+}) {
+  const { projectId, participantUserIds } = params;
 
+  if (!participantUserIds.length) {
+    return [];
+  }
+
+  if (projectId) {
     const memberships = await prisma.projectUser.findMany({
-        where: {
-            projectId,
-            userId: {
-                in: participantUserIds,
-            },
+      where: {
+        projectId,
+        userId: {
+          in: participantUserIds,
         },
-        select: {
-            userId: true,
-        },
+      },
+      select: {
+        userId: true,
+      },
     });
 
     const allowedUserIds = new Set(memberships.map((membership) => membership.userId));
 
     const invalidUserIds = participantUserIds.filter(
-        (userId) => !allowedUserIds.has(userId)
+      (userId) => !allowedUserIds.has(userId)
     );
 
     if (invalidUserIds.length > 0) {
-        throw new ActionError(
-            "Tous les participants doivent appartenir au projet de la réunion.",
-            400
-        );
+      throw new ActionError(
+        "Tous les participants doivent appartenir au projet de la réunion.",
+        400
+      );
     }
 
     return Array.from(new Set(participantUserIds));
+  }
+
+  const existingUsers = await prisma.user.findMany({
+    where: {
+      id: {
+        in: participantUserIds,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const allowedUserIds = new Set(existingUsers.map((user) => user.id));
+
+  const invalidUserIds = participantUserIds.filter(
+    (userId) => !allowedUserIds.has(userId)
+  );
+
+  if (invalidUserIds.length > 0) {
+    throw new ActionError(
+      "Tous les participants doivent être des utilisateurs valides de l'application.",
+      400
+    );
+  }
+
+  return Array.from(new Set(participantUserIds));
 }
 
 async function notifyMeetingParticipants(params: {
@@ -250,87 +281,111 @@ async function notifyNewMeetingParticipants(params: {
 }
 
 export async function createMeeting(input: {
-    title: string;
-    description?: string;
-    notes?: string;
-    scheduledAt: Date | string;
-    durationMinutes?: number | null;
-    teamId: string;
-    projectId?: string | null;
-    externalUrl?: string | null;
-    participantUserIds?: string[];
+  title: string;
+  description?: string;
+  notes?: string;
+  scheduledAt: Date | string;
+  durationMinutes?: number | null;
+  teamId?: string | null;
+  projectId?: string | null;
+  externalUrl?: string | null;
+  participantUserIds?: string[];
 }) {
-    const parsed = createMeetingSchema.parse({
-        ...input,
-        durationMinutes: input.durationMinutes ?? null,
-        projectId: input.projectId ?? null,
-        externalUrl: input.externalUrl ?? null,
-        participantUserIds: input.participantUserIds ?? [],
+  const parsed = createMeetingSchema.parse({
+    ...input,
+    durationMinutes: input.durationMinutes ?? null,
+    teamId: input.teamId ?? null,
+    projectId: input.projectId ?? null,
+    externalUrl: input.externalUrl ?? null,
+    participantUserIds: input.participantUserIds ?? [],
+  });
+
+  const user = await getCurrentDbUser();
+
+  let resolvedProjectId: string | null = parsed.projectId ?? null;
+  let resolvedTeamId: string | null = null;
+
+  if (parsed.teamId) {
+    const team = await prisma.team.findUnique({
+      where: { id: parsed.teamId },
+      select: {
+        id: true,
+        projectId: true,
+      },
     });
 
-    const { user, team, projectId: teamProjectId } =
-        await assertCanCreateMeetingInTeam(parsed.teamId);
-
-    if (parsed.projectId && parsed.projectId !== teamProjectId) {
-        throw new ActionError(
-            "Le projet sélectionné ne correspond pas au projet de l'équipe.",
-            400
-        );
+    if (!team) {
+      throw new ActionError("Équipe introuvable.", 404);
     }
 
-    const resolvedProjectId = parsed.projectId ?? null;
+    if (resolvedProjectId && team.projectId !== resolvedProjectId) {
+      throw new ActionError(
+        "L'équipe sélectionnée n'appartient pas au projet choisi.",
+        400
+      );
+    }
 
-    const uniqueParticipantUserIds = await assertParticipantsEligibleForMeeting(
-        parsed.teamId,
-        teamProjectId,
-        parsed.participantUserIds
-    );
+    resolvedTeamId = team.id;
+    resolvedProjectId = team.projectId;
+  }
 
-    const meeting = await prisma.teamMeeting.create({
-        data: {
-            title: parsed.title,
-            description: normalizeOptionalString(parsed.description),
-            notes: normalizeOptionalString(parsed.notes),
-            scheduledAt: parsed.scheduledAt,
-            durationMinutes: parsed.durationMinutes ?? null,
-            teamId: parsed.teamId,
-            projectId: resolvedProjectId,
-            externalUrl: normalizeOptionalString(parsed.externalUrl),
-            createdById: user.id,
-            participants: {
-                create: uniqueParticipantUserIds.map((participantUserId) => ({
-                    userId: participantUserId,
-                })),
-            },
+  if (resolvedProjectId) {
+    await assertCanCreateMeetingInProject(resolvedProjectId);
+  }
+
+  const uniqueParticipantUserIds = await assertParticipantsEligibleForMeeting({
+    projectId: resolvedProjectId,
+    participantUserIds: parsed.participantUserIds,
+  });
+
+  const meeting = await prisma.teamMeeting.create({
+    data: {
+      title: parsed.title,
+      description: normalizeOptionalString(parsed.description),
+      notes: normalizeOptionalString(parsed.notes),
+      scheduledAt: parsed.scheduledAt,
+      durationMinutes: parsed.durationMinutes ?? null,
+      externalUrl: normalizeOptionalString(parsed.externalUrl),
+      projectId: resolvedProjectId,
+      createdById: user.id,
+      ...(resolvedTeamId ? { teamId: resolvedTeamId } : {}),
+      participants: {
+        create: uniqueParticipantUserIds.map((participantUserId) => ({
+          userId: participantUserId,
+        })),
+      },
+    },
+    include: {
+      team: true,
+      project: true,
+      createdBy: true,
+      participants: {
+        select: {
+          userId: true,
         },
-        include: {
-            team: true,
-            project: true,
-            createdBy: true,
-            participants: {
-                select: {
-                    userId: true,
-                },
-            },
-        },
-    });
+      },
+    },
+  });
 
-    await notifyMeetingParticipants({
-        participantUserIds: uniqueParticipantUserIds,
-        actorUserId: user.id,
-        type: "MEETING_INVITED",
-        title: "Invitation à une réunion",
-        message: `${user.name} vous a invité à la réunion "${meeting.title}".`,
-        projectId: meeting.projectId ?? teamProjectId,
-        meetingId: meeting.id,
-        teamId: meeting.teamId,
-    });
+  await notifyMeetingParticipants({
+    participantUserIds: uniqueParticipantUserIds,
+    actorUserId: user.id,
+    type: "MEETING_INVITED",
+    title: "Invitation à une réunion",
+    message: `${user.name} vous a invité à la réunion "${meeting.title}".`,
+    projectId: meeting.projectId ?? undefined,
+    meetingId: meeting.id,
+    teamId: meeting.teamId ?? "",
+  });
 
-    revalidatePath("/meetings");
-    revalidatePath(`/teams/${parsed.teamId}`);
-    revalidatePath(`/project/${teamProjectId}`);
-
-    return meeting;
+  revalidatePath("/meetings");
+  if (resolvedProjectId) {
+    revalidatePath(`/project/${resolvedProjectId}`);
+  }
+  if (meeting.teamId) {
+    revalidatePath(`/teams/${meeting.teamId}`);
+  }
+  return meeting;
 }
 
 export async function getMeetingsForCurrentUser() {
@@ -361,10 +416,6 @@ export async function getMeetingsForCurrentUser() {
     })
     .map((membership) => membership.projectId);
 
-  if (!readableProjectIds.length) {
-    return [];
-  }
-
   const meetings = await prisma.teamMeeting.findMany({
     where: {
       OR: [
@@ -378,6 +429,20 @@ export async function getMeetingsForCurrentUser() {
           team: {
             projectId: {
               in: readableProjectIds,
+            },
+          },
+        },
+        {
+          projectId: null,
+          teamId: null,
+          createdById: user.id,
+        },
+        {
+          projectId: null,
+          teamId: null,
+          participants: {
+            some: {
+              userId: user.id,
             },
           },
         },
@@ -544,7 +609,7 @@ export async function updateMeetingNotes(meetingId: string, notes: string) {
     message: `Le compte-rendu de la réunion "${updatedMeeting.title}" a été mis à jour.`,
     projectId: updatedMeeting.projectId ?? ctx.projectId,
     meetingId: updatedMeeting.id,
-    teamId: updatedMeeting.teamId,
+    teamId: updatedMeeting.teamId ?? "",
   });
 
   revalidateMeetingPaths(parsed.meetingId, ctx.teamId);
@@ -587,7 +652,7 @@ export async function updateMeetingStatus(
     message: `Le statut de la réunion "${updatedMeeting.title}" est maintenant "${updatedMeeting.status}".`,
     projectId: updatedMeeting.projectId ?? ctx.projectId,
     meetingId: updatedMeeting.id,
-    teamId: updatedMeeting.teamId,
+    teamId: updatedMeeting.teamId ?? "",
   });
 
   revalidateMeetingPaths(parsed.meetingId, ctx.teamId);
@@ -646,7 +711,7 @@ export async function generateJitsiMeetingLink(meetingId: string) {
     message: `Le lien de visioconférence de la réunion "${updatedMeeting.title}" est désormais disponible.`,
     projectId: updatedMeeting.projectId ?? ctx.projectId,
     meetingId: updatedMeeting.id,
-    teamId: updatedMeeting.teamId,
+    teamId: updatedMeeting.teamId ?? "",
   });
 
   revalidateMeetingPaths(meeting.id, meeting.teamId);
@@ -702,7 +767,7 @@ export async function regenerateJitsiMeetingLink(meetingId: string) {
     message: `Le lien de visioconférence de la réunion "${updatedMeeting.title}" a été régénéré.`,
     projectId: updatedMeeting.projectId ?? ctx.projectId,
     meetingId: updatedMeeting.id,
-    teamId: updatedMeeting.teamId,
+    teamId: updatedMeeting.teamId ?? "",
   });
 
   revalidateMeetingPaths(meeting.id, meeting.teamId);
@@ -748,7 +813,7 @@ export async function removeMeetingVideoLink(meetingId: string) {
     message: `Le lien de visioconférence de la réunion "${updatedMeeting.title}" a été retiré.`,
     projectId: updatedMeeting.projectId ?? ctx.projectId,
     meetingId: updatedMeeting.id,
-    teamId: updatedMeeting.teamId,
+    teamId: updatedMeeting.teamId ?? "",
   });
 
   revalidateMeetingPaths(meeting.id, meeting.teamId);
@@ -868,11 +933,10 @@ export async function updateMeetingParticipants(
   const user = await getCurrentDbUser();
   const ctx = await assertCanManageMeeting(parsed.meetingId);
 
-  const uniqueParticipantUserIds = await assertParticipantsEligibleForMeeting(
-    ctx.teamId,
-    ctx.projectId,
-    parsed.participantUserIds
-  );
+  const uniqueParticipantUserIds = await assertParticipantsEligibleForMeeting({
+    projectId: ctx.projectId,
+    participantUserIds: parsed.participantUserIds,
+  });
 
   const existingParticipants = await prisma.meetingParticipant.findMany({
     where: { meetingId: parsed.meetingId },
@@ -979,7 +1043,7 @@ export async function updateMeetingParticipants(
     actorName: user.name,
     meetingTitle: updatedMeeting.title,
     meetingId: updatedMeeting.id,
-    teamId: updatedMeeting.teamId,
+    teamId: updatedMeeting.teamId ?? "",
     projectId: updatedMeeting.projectId ?? ctx.projectId,
   });
 
@@ -997,6 +1061,26 @@ export async function updateMeetingParticipants(
 
 export async function getEligibleMeetingParticipants(meetingId: string) {
   const ctx = await assertCanReadMeeting(meetingId);
+
+  if (!ctx.projectId) {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
+
+    return users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: null,
+    }));
+  }
 
   const members = await prisma.projectUser.findMany({
     where: {

@@ -56,7 +56,7 @@ type EligibleMeetingParticipant = {
     id: string;
     name: string | null;
     email: string;
-    role: "OWNER" | "MANAGER" | "VIEWER" | "MEMBER";
+    role: "OWNER" | "MANAGER" | "VIEWER" | "MEMBER" | null;
 };
 
 const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {

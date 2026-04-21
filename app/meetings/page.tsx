@@ -6,7 +6,7 @@ import EmptyState from "../components/EmptyState";
 import {
     createMeeting,
     getMeetingsForCurrentUser,
-    getTeamProjectsForMeeting,
+    getProjectsAssociatedWithUser,
     getTeamsForCurrentUser,
     updateMeetingStatus,
 } from "../actions";
@@ -44,7 +44,7 @@ const STATUS_BADGE_CLASS = {
 const page = () => {
     const [meetings, setMeetings] = useState<TeamMeeting[]>([]);
     const [teams, setTeams] = useState<TeamOption[]>([]);
-    const [teamProjects, setTeamProjects] = useState<{ id: string; name: string }[]>([]);
+    const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
 
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -83,29 +83,20 @@ const page = () => {
         }
     };
 
+    const fetchProjects = async () => {
+        try {
+            const data = await getProjectsAssociatedWithUser();
+            setProjects(data.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })));
+        } catch (error) {
+            toast.error("Erreur lors du chargement des projets.");
+        }
+    };
+
     useEffect(() => {
         fetchMeetings();
         fetchTeams();
+        fetchProjects();
     }, []);
-
-    useEffect(() => {
-        const loadProjects = async () => {
-            if (!selectedTeamId) {
-                setTeamProjects([]);
-                setSelectedProjectId("");
-                return;
-            }
-
-            try {
-                const projects = await getTeamProjectsForMeeting(selectedTeamId);
-                setTeamProjects(projects as { id: string; name: string }[]);
-            } catch (error) {
-                toast.error("Erreur lors du chargement des projets de l'équipe.");
-            }
-        };
-
-        loadProjects();
-    }, [selectedTeamId]);
 
     const filteredMeetings = useMemo(() => {
         return meetings.filter((meeting) => {
@@ -114,6 +105,15 @@ const page = () => {
             return teamMatch && statusMatch;
         });
     }, [meetings, teamFilter, statusFilter]);
+
+
+    const filteredTeamsForProject = useMemo(() => {
+        if (!selectedProjectId) {
+            return teams;
+        }
+
+        return teams.filter((team) => team.projectId === selectedProjectId);
+    }, [teams, selectedProjectId]);
 
     const resetForm = () => {
         setTitle("");
@@ -124,12 +124,11 @@ const page = () => {
         setSelectedTeamId("");
         setSelectedProjectId("");
         setExternalUrl("");
-        setTeamProjects([]);
     };
 
     const handleCreateMeeting = async () => {
-        if (!title.trim() || !scheduledAt || !selectedTeamId) {
-            toast.error("Veuillez renseigner le titre, l'équipe et la date.");
+        if (!title.trim() || !scheduledAt) {
+            toast.error("Veuillez renseigner le titre et la date.");
             return;
         }
 
@@ -139,9 +138,10 @@ const page = () => {
             await createMeeting({
                 title,
                 description,
+                notes,
                 scheduledAt,
                 durationMinutes: durationMinutes ? Number(durationMinutes) : null,
-                teamId: selectedTeamId,
+                teamId: selectedTeamId || null,
                 projectId: selectedProjectId || null,
                 externalUrl: externalUrl || null,
             });
@@ -248,7 +248,7 @@ const page = () => {
 
                         <h3 className="font-bold text-lg">Nouvelle réunion</h3>
                         <p className="py-4 text-sm opacity-80">
-                            Créez une réunion d'équipe, avec un projet lié en option.
+                            Créez une réunion autonome, liée à un projet, ou ciblée sur une équipe si besoin.
                         </p>
 
                         <div className="grid grid-cols-1 gap-4">
@@ -270,17 +270,20 @@ const page = () => {
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
                                     <label className="label">
-                                        <span className="label-text">Équipe</span>
+                                        <span className="label-text">Projet lié (optionnel)</span>
                                     </label>
                                     <select
                                         className="select select-bordered w-full"
-                                        value={selectedTeamId}
-                                        onChange={(e) => setSelectedTeamId(e.target.value)}
+                                        value={selectedProjectId}
+                                        onChange={(e) => {
+                                            setSelectedProjectId(e.target.value);
+                                            setSelectedTeamId("");
+                                        }}
                                     >
-                                        <option value="">Choisir une équipe</option>
-                                        {teams.map((team) => (
-                                            <option key={team.id} value={team.id}>
-                                                {team.name}
+                                        <option value="">Choisir un projet</option>
+                                        {projects.map((project) => (
+                                            <option key={project.id} value={project.id}>
+                                                {project.name}
                                             </option>
                                         ))}
                                     </select>
@@ -288,18 +291,18 @@ const page = () => {
 
                                 <div>
                                     <label className="label">
-                                        <span className="label-text">Projet lié (optionnel)</span>
+                                        <span className="label-text">Équipe concernée (optionnel)</span>
                                     </label>
                                     <select
                                         className="select select-bordered w-full"
-                                        value={selectedProjectId}
-                                        onChange={(e) => setSelectedProjectId(e.target.value)}
-                                        disabled={!selectedTeamId}
+                                        value={selectedTeamId}
+                                        onChange={(e) => setSelectedTeamId(e.target.value)}
+                                        disabled={!selectedProjectId}
                                     >
-                                        <option value="">Aucun projet</option>
-                                        {teamProjects.map((project) => (
-                                            <option key={project.id} value={project.id}>
-                                                {project.name}
+                                        <option value="">Aucune équipe spécifique</option>
+                                        {filteredTeamsForProject.map((team) => (
+                                            <option key={team.id} value={team.id}>
+                                                {team.name}
                                             </option>
                                         ))}
                                     </select>
@@ -386,7 +389,7 @@ const page = () => {
                                             <div className="mt-2 flex flex-col gap-1 text-sm opacity-75">
                                                 <p className="flex items-center gap-2">
                                                     <UsersRound className="w-4 h-4" />
-                                                    Équipe : {meeting.team?.name}
+                                                    {meeting.team?.name ? `Équipe : ${meeting.team.name}` : "Réunion sans équipe"}
                                                 </p>
 
                                                 {meeting.project ? (
@@ -394,7 +397,12 @@ const page = () => {
                                                         <FolderPlus className="w-4 h-4" />
                                                         Projet : {meeting.project.name}
                                                     </p>
-                                                ) : null}
+                                                ) : (
+                                                    <p className="flex items-center gap-2">
+                                                        <FolderPlus className="w-4 h-4" />
+                                                        Réunion autonome
+                                                    </p>
+                                                )}
 
                                                 <p className="flex items-center gap-2">
                                                     <CalendarDays className="w-4 h-4" />

@@ -31,6 +31,11 @@ export async function getMeetingAccessContext(meetingId: string) {
           projectId: true,
         },
       },
+      participants: {
+        select: {
+          userId: true,
+        },
+      },
     },
   });
 
@@ -38,44 +43,83 @@ export async function getMeetingAccessContext(meetingId: string) {
     throw new ActionError("Réunion introuvable.", 404);
   }
 
-  const resolvedProjectId = meeting.projectId ?? meeting.team.projectId;
-
-  if (!resolvedProjectId) {
-    throw new ActionError(
-      "Réunion invalide : aucun projet de référence n'a pu être résolu.",
-      400
-    );
-  }
+  const resolvedProjectId = meeting.projectId ?? meeting.team?.projectId ?? null;
+  const participantUserIds = new Set(meeting.participants.map((p) => p.userId));
+  const isStandalone = !resolvedProjectId;
+  const isCreator = meeting.createdById === user.id;
+  const isParticipant = participantUserIds.has(user.id);
 
   return {
     user,
     meeting,
-    teamId: meeting.teamId,
+    teamId: meeting.teamId ?? null,
     projectId: resolvedProjectId,
+    isStandalone,
+    isCreator,
+    isParticipant,
   };
 }
 
 export async function assertCanReadMeeting(meetingId: string) {
   const ctx = await getMeetingAccessContext(meetingId);
-  await assertCanReadMeetings(ctx.projectId);
+
+  if (ctx.projectId) {
+    await assertCanReadMeetings(ctx.projectId);
+    return ctx;
+  }
+
+  if (!ctx.isCreator && !ctx.isParticipant) {
+    throw new ActionError("Accès refusé à cette réunion.", 403);
+  }
+
   return ctx;
 }
 
 export async function assertCanJoinMeeting(meetingId: string) {
   const ctx = await getMeetingAccessContext(meetingId);
-  await assertCanJoinMeetings(ctx.projectId);
+
+  if (ctx.projectId) {
+    await assertCanJoinMeetings(ctx.projectId);
+    return ctx;
+  }
+
+  if (!ctx.isCreator && !ctx.isParticipant) {
+    throw new ActionError("Vous ne pouvez pas rejoindre cette réunion.", 403);
+  }
+
   return ctx;
 }
 
 export async function assertCanManageMeeting(meetingId: string) {
   const ctx = await getMeetingAccessContext(meetingId);
-  await assertProjectCapability(ctx.projectId, "UPDATE_MEETING");
+
+  if (ctx.projectId) {
+    await assertProjectCapability(ctx.projectId, "UPDATE_MEETING");
+    return ctx;
+  }
+
+  if (!ctx.isCreator) {
+    throw new ActionError("Vous ne pouvez pas modifier cette réunion.", 403);
+  }
+
   return ctx;
 }
 
 export async function assertCanAddMeetingRecording(meetingId: string) {
   const ctx = await getMeetingAccessContext(meetingId);
-  await assertProjectCapability(ctx.projectId, "ADD_MEETING_RECORDING");
+
+  if (ctx.projectId) {
+    await assertProjectCapability(ctx.projectId, "ADD_MEETING_RECORDING");
+    return ctx;
+  }
+
+  if (!ctx.isCreator) {
+    throw new ActionError(
+      "Vous ne pouvez pas ajouter d'enregistrement à cette réunion.",
+      403
+    );
+  }
+
   return ctx;
 }
 
@@ -101,5 +145,30 @@ export async function assertCanCreateMeetingInTeam(teamId: string) {
     user,
     team,
     projectId: team.projectId,
+  };
+}
+
+export async function assertCanCreateMeetingInProject(projectId: string) {
+  const user = await getCurrentDbUser();
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      id: true,
+      name: true,
+      createdById: true,
+    },
+  });
+
+  if (!project) {
+    throw new ActionError("Projet introuvable.", 404);
+  }
+
+  await assertCanCreateMeeting(projectId);
+
+  return {
+    user,
+    project,
+    projectId: project.id,
   };
 }

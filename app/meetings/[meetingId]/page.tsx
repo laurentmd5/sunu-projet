@@ -351,7 +351,8 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
     const isCancelled = meeting.status === "CANCELLED";
     const hasVideoLink = Boolean(meeting.externalUrl);
     const recordings = meeting.meetingRecordings || [];
-    const canManageMeeting = meeting.currentUserTeamRole === "OWNER";
+    const canManageMeeting = Boolean(meeting.canManageMeeting);
+    const canJoinMeeting = Boolean(meeting.canJoinMeeting);
 
     return (
         <Wrapper>
@@ -367,11 +368,10 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                             <div className="flex flex-wrap items-center gap-2">
                                 <h1 className="text-2xl font-bold break-words">{meeting.title}</h1>
                                 <span
-                                    className={`badge ${
-                                        STATUS_BADGE_CLASS[
-                                            meeting.status as keyof typeof STATUS_BADGE_CLASS
-                                        ]
-                                    }`}
+                                    className={`badge ${STATUS_BADGE_CLASS[
+                                        meeting.status as keyof typeof STATUS_BADGE_CLASS
+                                    ]
+                                        }`}
                                 >
                                     {STATUS_LABELS[
                                         meeting.status as keyof typeof STATUS_LABELS
@@ -382,7 +382,7 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                             <div className="mt-3 flex flex-col gap-2 text-sm opacity-75">
                                 <p className="flex items-center gap-2">
                                     <UsersRound className="w-4 h-4" />
-                                    Équipe : {meeting.team?.name}
+                                    {meeting.team?.name ? `Équipe : ${meeting.team.name}` : "Aucune équipe spécifique"}
                                 </p>
 
                                 {meeting.project ? (
@@ -390,7 +390,12 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                         <FolderKanban className="w-4 h-4" />
                                         Projet lié : {meeting.project.name}
                                     </p>
-                                ) : null}
+                                ) : (
+                                    <p className="flex items-center gap-2">
+                                        <FolderKanban className="w-4 h-4" />
+                                        Réunion autonome
+                                    </p>
+                                )}
 
                                 <p className="flex items-center gap-2">
                                     <CalendarDays className="w-4 h-4" />
@@ -404,8 +409,11 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                 ) : null}
 
                                 <p className="text-xs opacity-60">
-                                    Votre rôle sur cette réunion :{" "}
-                                    {meeting.currentUserTeamRole === "OWNER" ? "Propriétaire" : "Membre"}
+                                    {canManageMeeting
+                                        ? "Vous pouvez gérer cette réunion."
+                                        : canJoinMeeting
+                                            ? "Vous pouvez participer à cette réunion."
+                                            : "Accès en lecture selon vos droits actuels."}
                                 </p>
                             </div>
                         </div>
@@ -565,15 +573,21 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                 </div>
 
                                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                                    <a
-                                        href={meeting.externalUrl!}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="btn btn-primary w-full sm:w-auto"
-                                    >
-                                        <Video className="w-4 h-4" />
-                                        Ouvrir la visio
-                                    </a>
+                                    {canJoinMeeting ? (
+                                        <a
+                                            href={meeting.externalUrl!}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="btn btn-primary w-full sm:w-auto"
+                                        >
+                                            <Video className="w-4 h-4" />
+                                            Ouvrir la visio
+                                        </a>
+                                    ) : (
+                                        <div className="text-xs opacity-60">
+                                            Vous pouvez consulter cette réunion, mais vous n'avez pas l'autorisation de rejoindre la visioconférence.
+                                        </div>
+                                    )}
 
                                     <button
                                         type="button"
@@ -757,7 +771,7 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
                                                 Ajouté le{" "}
                                                 {new Date(recording.createdAt).toLocaleString("fr-FR")}
                                                 {recording.addedBy
-                                                    ? ` par ${recording.addedBy.name || recording.addedBy.email}` 
+                                                    ? ` par ${recording.addedBy.name || recording.addedBy.email}`
                                                     : ""}
                                             </p>
                                         </div>
@@ -789,3 +803,7 @@ const page = ({ params }: { params: Promise<{ meetingId: string }> }) => {
 };
 
 export default page;
+
+
+
+

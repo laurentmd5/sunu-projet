@@ -254,6 +254,8 @@ export type TeamMeeting = PrismaTeamMeeting & {
     })[];
     participants?: MeetingParticipantItem[];
     currentUserTeamRole?: TeamRole | null;
+    canManageMeeting?: boolean;
+    canJoinMeeting?: boolean;
 };
 
 export type TeamMeetingStatus = MeetingStatus;

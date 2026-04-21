@@ -7,6 +7,7 @@ import { ActionError, getCurrentDbUser } from "@/lib/permissions";
 import {
   assertCanAddMeetingRecording,
   assertCanCreateMeetingInProject,
+  assertCanJoinMeeting,
   assertCanManageMeeting,
   assertCanReadMeeting,
 } from "@/lib/meeting-access";
@@ -516,7 +517,7 @@ export async function getTeamProjectsForMeeting(teamId: string) {
 }
 
 export async function getMeetingDetails(meetingId: string) {
-  await assertCanReadMeeting(meetingId);
+  const readCtx = await assertCanReadMeeting(meetingId);
 
   const meeting = await prisma.teamMeeting.findUnique({
     where: { id: meetingId },
@@ -575,7 +576,24 @@ export async function getMeetingDetails(meetingId: string) {
     throw new ActionError("Réunion introuvable.", 404);
   }
 
-  return meeting;
+  let canManageMeeting = false;
+  let canJoinMeeting = false;
+
+  try {
+    await assertCanManageMeeting(meetingId);
+    canManageMeeting = true;
+  } catch {}
+
+  try {
+    await assertCanJoinMeeting(meetingId);
+    canJoinMeeting = true;
+  } catch {}
+
+  return {
+    ...meeting,
+    canManageMeeting,
+    canJoinMeeting,
+  };
 }
 
 export async function updateMeetingNotes(meetingId: string, notes: string) {

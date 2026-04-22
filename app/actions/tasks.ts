@@ -808,6 +808,14 @@ export async function updateTaskManagement(input: {
     teamId?: string | null;
     milestoneId?: string | null;
 }) {
+    const isAssignOnlyUpdate =
+        Object.prototype.hasOwnProperty.call(input, "assignToEmail") &&
+        !Object.prototype.hasOwnProperty.call(input, "dueDate") &&
+        !Object.prototype.hasOwnProperty.call(input, "priority") &&
+        !Object.prototype.hasOwnProperty.call(input, "tags") &&
+        !Object.prototype.hasOwnProperty.call(input, "teamId") &&
+        !Object.prototype.hasOwnProperty.call(input, "milestoneId");
+
     const parsed = updateTaskManagementSchema.parse(input);
 
     const { user, task } = await assertTaskAccess(parsed.taskId);
@@ -824,15 +832,20 @@ export async function updateTaskManagement(input: {
         },
     });
 
-    const canManageTask =
-        task.project.createdById === user.id ||
-        membership?.role === "MANAGER";
+    const isOwner = task.project.createdById === user.id;
+    const isManager = membership?.role === "MANAGER";
 
-    if (!canManageTask) {
-        throw new ActionError(
-            "Seuls le propriétaire du projet ou un manager peuvent modifier la gestion de la tâche.",
-            403
-        );
+    if (isAssignOnlyUpdate) {
+        await assertCanAssignTasks(task.projectId);
+    } else {
+        const canManageTask = isOwner || isManager;
+
+        if (!canManageTask) {
+            throw new ActionError(
+                "Seuls le propriétaire du projet ou un manager peuvent modifier la gestion complète de la tâche.",
+                403
+            );
+        }
     }
 
     if (parsed.dueDate && parsed.dueDate < new Date(new Date().setHours(0, 0, 0, 0))) {

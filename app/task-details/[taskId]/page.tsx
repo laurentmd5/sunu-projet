@@ -145,6 +145,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     }, [members, email]);
 
     const currentUserRole: ProjectRole | null = currentMembership?.role ?? null;
+    const currentViewerPermissions = currentMembership?.permissions ?? [];
 
     const isTeamLeadForTask =
         !!task?.team && task.team.leadUserId === currentMembership?.userId;
@@ -158,8 +159,16 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         task.routing?.targetType === "SUBTEAM"
     );
 
-    const canManageTaskSettings =
+    const canManageTaskFully =
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
+
+    const canAssignTaskOnly =
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER" ||
+        (currentUserRole === "VIEWER" &&
+            currentViewerPermissions.includes("ASSIGN_TASKS"));
+
+    const canOpenTaskManagementModal = canAssignTaskOnly;
 
     const canSendToReview =
         !!task &&
@@ -202,21 +211,29 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         try {
             setIsSubmittingManagement(true);
 
-            // Parser les tags
-            const parsedTags = managementTagsInput
-                .split(',')
-                .map(tag => tag.trim())
-                .filter(Boolean);
+            if (canManageTaskFully) {
+                // Parser les tags
+                const parsedTags = managementTagsInput
+                    .split(',')
+                    .map(tag => tag.trim())
+                    .filter(Boolean);
 
-            await updateTaskManagement({
-                taskId: task.id,
-                assignToEmail: selectedAssigneeEmail || null,
-                dueDate: managementDueDate ? new Date(`${managementDueDate}T00:00:00`) : null,
-                priority: managementPriority,
-                tags: parsedTags,
-                teamId: managementTeamId || null,
-                milestoneId: managementMilestoneId || null,
-            });
+                await updateTaskManagement({
+                    taskId: task.id,
+                    assignToEmail: selectedAssigneeEmail || null,
+                    dueDate: managementDueDate ? new Date(`${managementDueDate}T00:00:00`) : null,
+                    priority: managementPriority,
+                    tags: parsedTags,
+                    teamId: managementTeamId || null,
+                    milestoneId: managementMilestoneId || null,
+                });
+            } else {
+                // Assign-only: only send assignToEmail
+                await updateTaskManagement({
+                    taskId: task.id,
+                    assignToEmail: selectedAssigneeEmail || null,
+                });
+            }
 
             await fetchInfos(task.id);
             toast.success("Gestion de la tâche mise à jour");
@@ -585,7 +602,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         </div>
                     )}
 
-                    {canManageTaskSettings && (
+                    {canOpenTaskManagementModal && (
                         <div className="flex justify-end mb-4">
                             <button
                                 className="btn btn-primary btn-sm"
@@ -754,103 +771,109 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                             L'équipe responsable et l'exécutant peuvent être définis séparément. Si les deux sont renseignés, l'exécutant doit appartenir à l'équipe responsable ou à une de ses sous-équipes.
                                         </p>
                                     </div>
-
-                                    <div className="flex-1">
-                                        <label className="label">
-                                            <span className="label-text">Date d'échéance</span>
-                                        </label>
-                                        <input
-                                            type="date"
-                                            className="input input-bordered w-full"
-                                            value={managementDueDate}
-                                            min={new Date().toISOString().split("T")[0]}
-                                            onChange={(e) => setManagementDueDate(e.target.value)}
-                                        />
-                                    </div>
                                 </div>
 
-                                <div className="flex flex-col gap-4 md:flex-row md:items-end">
-                                    <div className="flex-1">
-                                        <label className="label">
-                                            <span className="label-text">Priorité</span>
-                                        </label>
-                                        <select
-                                            className="select select-bordered w-full"
-                                            value={managementPriority}
-                                            onChange={(e) => setManagementPriority(e.target.value as TaskPriority)}
-                                        >
-                                            <option value="LOW">Basse</option>
-                                            <option value="MEDIUM">Moyenne</option>
-                                            <option value="HIGH">Haute</option>
-                                            <option value="CRITICAL">Critique</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="flex-1">
-                                        <label className="label">
-                                            <span className="label-text">Tags</span>
-                                        </label>
-                                        <input
-                                            placeholder="frontend, api, urgent (séparés par virgules)"
-                                            className="input input-bordered w-full"
-                                            type='text'
-                                            value={managementTagsInput}
-                                            onChange={(e) => setManagementTagsInput(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-4 md:flex-row md:items-end">
-                                    <div className="flex-1">
-                                        <label className="label">
-                                            <span className="label-text">Équipe responsable</span>
-                                        </label>
-                                        <select
-                                            className="select select-bordered w-full"
-                                            value={managementTeamId}
-                                            onChange={(e) => setManagementTeamId(e.target.value)}
-                                        >
-                                            <option value="">Aucune équipe responsable</option>
-                                            {availableTeams.map((team) => (
-                                                <option key={team.id} value={team.id}>
-                                                    {team.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-4 md:flex-row md:items-end">
-                                    <div className="flex-1">
-                                        <label className="label">
-                                            <span className="label-text">Jalon</span>
-                                        </label>
-                                        <select
-                                            className="select select-bordered w-full"
-                                            value={managementMilestoneId}
-                                            onChange={(e) => setManagementMilestoneId(e.target.value)}
-                                        >
-                                            <option value="">Aucun jalon</option>
-                                            {availableMilestones.map((milestone) => (
-                                                <option key={milestone.id} value={milestone.id}>
-                                                    {milestone.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <div className="flex justify-end mt-2">
-                                            <button
-                                                type="button"
-                                                className="btn btn-outline btn-sm"
-                                                onClick={() => {
-                                                    const modal = document.getElementById("create_milestone_modal") as HTMLDialogElement | null;
-                                                    modal?.showModal();
-                                                }}
-                                            >
-                                                Créer un jalon
-                                            </button>
+                                {canManageTaskFully && (
+                                    <>
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                            <div className="flex-1">
+                                                <label className="label">
+                                                    <span className="label-text">Date d'échéance</span>
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    className="input input-bordered w-full"
+                                                    value={managementDueDate}
+                                                    min={new Date().toISOString().split("T")[0]}
+                                                    onChange={(e) => setManagementDueDate(e.target.value)}
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
+
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                            <div className="flex-1">
+                                                <label className="label">
+                                                    <span className="label-text">Priorité</span>
+                                                </label>
+                                                <select
+                                                    className="select select-bordered w-full"
+                                                    value={managementPriority}
+                                                    onChange={(e) => setManagementPriority(e.target.value as TaskPriority)}
+                                                >
+                                                    <option value="LOW">Basse</option>
+                                                    <option value="MEDIUM">Moyenne</option>
+                                                    <option value="HIGH">Haute</option>
+                                                    <option value="CRITICAL">Critique</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="flex-1">
+                                                <label className="label">
+                                                    <span className="label-text">Tags</span>
+                                                </label>
+                                                <input
+                                                    placeholder="frontend, api, urgent (séparés par virgules)"
+                                                    className="input input-bordered w-full"
+                                                    type='text'
+                                                    value={managementTagsInput}
+                                                    onChange={(e) => setManagementTagsInput(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                            <div className="flex-1">
+                                                <label className="label">
+                                                    <span className="label-text">Équipe responsable</span>
+                                                </label>
+                                                <select
+                                                    className="select select-bordered w-full"
+                                                    value={managementTeamId}
+                                                    onChange={(e) => setManagementTeamId(e.target.value)}
+                                                >
+                                                    <option value="">Aucune équipe responsable</option>
+                                                    {availableTeams.map((team) => (
+                                                        <option key={team.id} value={team.id}>
+                                                            {team.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                                            <div className="flex-1">
+                                                <label className="label">
+                                                    <span className="label-text">Jalon</span>
+                                                </label>
+                                                <select
+                                                    className="select select-bordered w-full"
+                                                    value={managementMilestoneId}
+                                                    onChange={(e) => setManagementMilestoneId(e.target.value)}
+                                                >
+                                                    <option value="">Aucun jalon</option>
+                                                    {availableMilestones.map((milestone) => (
+                                                        <option key={milestone.id} value={milestone.id}>
+                                                            {milestone.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div className="flex justify-end mt-2">
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-outline btn-sm"
+                                                        onClick={() => {
+                                                            const modal = document.getElementById("create_milestone_modal") as HTMLDialogElement | null;
+                                                            modal?.showModal();
+                                                        }}
+                                                    >
+                                                        Créer un jalon
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
 
                                 <div className="flex justify-end mt-4">
                                     <button

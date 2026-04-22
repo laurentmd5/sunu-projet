@@ -12,6 +12,7 @@ export {
     getProjectInfo,
     deleteProjectById,
     addUserToProject,
+    updateProjectStatus,
 } from "./projects";
 
 // Members

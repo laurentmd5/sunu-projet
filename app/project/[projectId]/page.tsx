@@ -8,6 +8,7 @@ import {
     getProjectMembersWithRoles,
     removeProjectMember,
     updateProjectMemberRole,
+    updateProjectStatus,
     updateViewerPermissions,
 } from "@/app/actions";
 
@@ -103,6 +104,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [editingViewerUserId, setEditingViewerUserId] = useState<string | null>(null);
     const [editingViewerPermissions, setEditingViewerPermissions] = useState<ViewerPermission[]>([]);
     const [isUpdatingViewerPermissions, setIsUpdatingViewerPermissions] = useState(false);
+
+    const [isUpdatingProjectStatus, setIsUpdatingProjectStatus] = useState(false);
 
     const [activeTab, setActiveTab] = useState<ProjectTabKey>("overview");
     const [membersLoaded, setMembersLoaded] = useState(false);
@@ -224,6 +227,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             currentViewerPermissions.includes("CREATE_TASK"));
     const canDeleteTask =
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
+    const canManageProjectStatus = currentUserRole === "OWNER";
 
     const groupedMembers = useMemo(() => {
         const sorted = [...members].sort((a, b) => {
@@ -466,6 +470,28 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         setPendingRemoval(null);
     };
 
+    const handleProjectStatusChange = async (
+        newStatus: "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD"
+    ) => {
+        if (!projectId || !project) return;
+
+        try {
+            setIsUpdatingProjectStatus(true);
+            await updateProjectStatus(projectId, newStatus);
+            await fetchInfos(projectId);
+            await fetchActivityLogs(projectId);
+            toast.success("Statut du projet mis à jour");
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Erreur lors de la mise à jour du statut"
+            );
+        } finally {
+            setIsUpdatingProjectStatus(false);
+        }
+    };
+
     return (
         <Wrapper>
             <div className="space-y-6">
@@ -507,6 +533,43 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         Activité
                     </button>
                 </div>
+
+                {activeTab === "overview" && project && (
+                    <div className="rounded-xl border border-base-300 p-4 md:p-5">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                            <div>
+                                <h2 className="text-lg font-semibold">Statut du projet</h2>
+                                <p className="text-sm opacity-70 mt-1">
+                                    Mettez à jour l'état global du projet pour refléter sa situation réelle.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <select
+                                    className="select select-bordered"
+                                    value={project.status || "ACTIVE"}
+                                    onChange={(e) =>
+                                        handleProjectStatusChange(
+                                            e.target.value as "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD"
+                                        )
+                                    }
+                                    disabled={!canManageProjectStatus || isUpdatingProjectStatus}
+                                >
+                                    <option value="ACTIVE">Actif</option>
+                                    <option value="ON_HOLD">En pause</option>
+                                    <option value="COMPLETED">Terminé</option>
+                                    <option value="ARCHIVED">Archivé</option>
+                                </select>
+
+                                {!canManageProjectStatus && (
+                                    <p className="text-xs opacity-60">
+                                        Vous n'avez pas les droits pour modifier le statut.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <ProjectOverviewTab
                     isActive={activeTab === "overview"}

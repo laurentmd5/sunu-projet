@@ -21,6 +21,11 @@ const joinProjectSchema = z.object({
     inviteCode: z.string().min(1, "Le code d'invitation est requis"),
 });
 
+const updateProjectStatusSchema = z.object({
+    projectId: z.string().min(1, "Projet invalide."),
+    status: z.enum(["ACTIVE", "COMPLETED", "ARCHIVED", "ON_HOLD"]),
+});
+
 function generateUniqueCode(): string {
     return randomBytes(6).toString("hex");
 }
@@ -350,4 +355,75 @@ export async function getProjectInfo(idProject: string, details: boolean) {
                   )
                 : undefined,
     };
+}
+
+export async function updateProjectStatus(
+    projectId: string,
+    status: "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD"
+) {
+    try {
+        const parsed = updateProjectStatusSchema.parse({
+            projectId,
+            status,
+        });
+
+        const user = await getCurrentDbUser();
+
+        await canAdminProject(parsed.projectId);
+
+        const existingProject = await prisma.project.findUnique({
+            where: { id: parsed.projectId },
+            select: {
+                id: true,
+                name: true,
+                status: true,
+            },
+        });
+
+        if (!existingProject) {
+            throw new ActionError("Projet non trouvé.", 404);
+        }
+
+        if (existingProject.status === parsed.status) {
+            return {
+                success: true,
+                message: "Le statut du projet est déjà à jour.",
+            };
+        }
+
+        const updatedProject = await prisma.project.update({
+            where: { id: parsed.projectId },
+            data: {
+                status: parsed.status,
+            },
+        });
+
+        const statusLabels: Record<
+            "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD",
+            string
+        > = {
+            ACTIVE: "actif",
+            COMPLETED: "terminé",
+            ARCHIVED: "archivé",
+            ON_HOLD: "en pause",
+        };
+
+        await createActivityLog({
+            projectId: parsed.projectId,
+            actorUserId: user.id,
+            type: "PROJECT_STATUS_UPDATED",
+            message: `${user.name} a mis à jour le statut du projet "${existingProject.name}" vers "${statusLabels[parsed.status]}".`,
+        });
+
+        return {
+            success: true,
+            message: "Statut du projet mis à jour avec succès.",
+            project: updatedProject,
+        };
+    } catch (error) {
+        console.error(error);
+        throw error instanceof Error
+            ? error
+            : new Error("Erreur lors de la mise à jour du statut du projet");
+    }
 }

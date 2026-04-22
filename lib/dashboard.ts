@@ -6,6 +6,9 @@ export type DashboardHealthInputs = {
   activeMembers7d: number;
   membersCount: number;
   progressPercent: number;
+  totalTasks?: number;
+  activeTasks?: number;
+  projectStatus?: "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD" | string | null;
   startDate?: Date | string | null;
   endDate?: Date | string | null;
   now?: Date;
@@ -141,6 +144,16 @@ export function computeScheduleAlignmentPercent(params: {
   return Math.max(0, 100 - Math.abs(timeElapsedPercent - progressPercent));
 }
 
+export function normalizeProjectStatus(
+  status?: string | null
+): "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD" | "UNKNOWN" {
+  if (status === "ACTIVE") return "ACTIVE";
+  if (status === "COMPLETED") return "COMPLETED";
+  if (status === "ARCHIVED") return "ARCHIVED";
+  if (status === "ON_HOLD") return "ON_HOLD";
+  return "UNKNOWN";
+}
+
 export function computeMilestoneRisk(params: {
   totalTasks: number;
   completedTasks: number;
@@ -242,10 +255,61 @@ export function computeProjectHealth(input: DashboardHealthInputs): DashboardHea
     activeMembers7d,
     membersCount,
     progressPercent,
+    totalTasks = 0,
+    activeTasks = 0,
+    projectStatus,
     startDate,
     endDate,
     now = new Date(),
   } = input;
+
+  const normalizedStatus = normalizeProjectStatus(projectStatus);
+
+  // Cas 1 : projet terminé
+  if (normalizedStatus === "COMPLETED") {
+    const completedDrivers =
+      totalTasks > 0
+        ? ["Projet terminé"]
+        : ["Projet terminé", "Aucune tâche à évaluer"];
+
+    return {
+      lateRatePercent: 0,
+      activityRatePercent: 100,
+      scheduleAlignmentPercent: 100,
+      healthScore: 100,
+      healthColor: "GREEN",
+      healthDrivers: completedDrivers,
+    };
+  }
+
+  // Cas 2 : projet archivé
+  if (normalizedStatus === "ARCHIVED") {
+    return {
+      lateRatePercent: 0,
+      activityRatePercent: 100,
+      scheduleAlignmentPercent: 100,
+      healthScore: 100,
+      healthColor: "GREEN",
+      healthDrivers: ["Projet archivé"],
+    };
+  }
+
+  // Cas 3 : projet sans tâches
+  if (totalTasks <= 0) {
+    const baseScore = normalizedStatus === "ON_HOLD" ? 75 : 70;
+
+    return {
+      lateRatePercent: 0,
+      activityRatePercent: 100,
+      scheduleAlignmentPercent: 50,
+      healthScore: baseScore,
+      healthColor: baseScore >= 80 ? "GREEN" : "ORANGE",
+      healthDrivers:
+        normalizedStatus === "ON_HOLD"
+          ? ["Projet en pause", "Aucune tâche à évaluer"]
+          : ["Aucune tâche à évaluer"],
+    };
+  }
 
   const effectiveOverdueTasks = weightedOverdueTasks ?? overdueTasks;
   const effectiveActiveTasksWithDueDate =
@@ -258,19 +322,30 @@ export function computeProjectHealth(input: DashboardHealthInputs): DashboardHea
 
   const lateScore = Math.max(0, 100 - lateRatePercent);
 
+  // Si aucun exécutant, on reste neutre plutôt que de pénaliser
   const activityRatePercent =
     membersCount > 0
       ? Math.round((activeMembers7d / membersCount) * 100)
       : 100;
 
-  const scheduleAlignmentPercent = computeScheduleAlignmentPercent({
+  // En pause => le planning pèse moins fort
+  const rawScheduleAlignmentPercent = computeScheduleAlignmentPercent({
     startDate,
     endDate,
     progressPercent,
     now,
   });
 
+  const scheduleAlignmentPercent =
+    normalizedStatus === "ON_HOLD"
+      ? Math.max(rawScheduleAlignmentPercent, 70)
+      : rawScheduleAlignmentPercent;
+
   const healthDrivers: string[] = [];
+
+  if (normalizedStatus === "ON_HOLD") {
+    healthDrivers.push("Projet en pause");
+  }
 
   if (lateRatePercent >= 40) {
     healthDrivers.push("Retards élevés");
@@ -278,21 +353,32 @@ export function computeProjectHealth(input: DashboardHealthInputs): DashboardHea
     healthDrivers.push("Retards à surveiller");
   }
 
-  if (activityRatePercent < 50) {
+  if (membersCount > 0 && activityRatePercent < 50 && normalizedStatus !== "ON_HOLD") {
     healthDrivers.push("Activité faible");
   }
 
-  if (scheduleAlignmentPercent < 50) {
+  if (scheduleAlignmentPercent < 50 && normalizedStatus !== "ON_HOLD") {
     healthDrivers.push("Avancement en retard sur le planning");
-  } else if (scheduleAlignmentPercent < 70) {
+  } else if (scheduleAlignmentPercent < 70 && normalizedStatus === "ACTIVE") {
     healthDrivers.push("Planning à surveiller");
   }
 
-  const healthScore = Math.round(
-    lateScore * 0.4 +
-      activityRatePercent * 0.3 +
-      scheduleAlignmentPercent * 0.3
-  );
+  // Pondérations adaptées au statut
+  let healthScore: number;
+
+  if (normalizedStatus === "ON_HOLD") {
+    healthScore = Math.round(
+      lateScore * 0.5 +
+        activityRatePercent * 0.15 +
+        scheduleAlignmentPercent * 0.35
+    );
+  } else {
+    healthScore = Math.round(
+      lateScore * 0.4 +
+        activityRatePercent * 0.3 +
+        scheduleAlignmentPercent * 0.3
+    );
+  }
 
   const healthColor =
     healthScore >= 80 ? "GREEN" : healthScore >= 50 ? "ORANGE" : "RED";

@@ -281,6 +281,9 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       activeMembers7d,
       membersCount: executableMembersCount,
       progressPercent,
+      totalTasks,
+      activeTasks,
+      projectStatus: project.status,
       startDate: project.startDate,
       endDate: project.endDate,
       now,
@@ -309,11 +312,14 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
       (result) => result.riskLevel === "CRITICAL"
     ).length;
 
+    const isCompletedOrArchived =
+      project.status === "COMPLETED" || project.status === "ARCHIVED";
+
     const alerts = buildProjectAlerts({
-      overdueTasks,
-      dueSoonTasks,
-      inactiveMembersCount,
-      milestonesAtRiskCount,
+      overdueTasks: isCompletedOrArchived ? 0 : overdueTasks,
+      dueSoonTasks: isCompletedOrArchived ? 0 : dueSoonTasks,
+      inactiveMembersCount: isCompletedOrArchived ? 0 : inactiveMembersCount,
+      milestonesAtRiskCount: isCompletedOrArchived ? 0 : milestonesAtRiskCount,
       healthColor: health.healthColor,
     });
 
@@ -351,8 +357,8 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
         strugglingMembers,
         teamMetrics,
         topPerformer,
-        milestonesAtRiskCount,
-        criticalMilestonesAtRiskCount,
+        milestonesAtRiskCount: isCompletedOrArchived ? 0 : milestonesAtRiskCount,
+        criticalMilestonesAtRiskCount: isCompletedOrArchived ? 0 : criticalMilestonesAtRiskCount,
       } satisfies OwnerDashboardProjectInsight,
     };
   });

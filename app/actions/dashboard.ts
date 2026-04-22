@@ -25,7 +25,35 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
 
   const projects = await prisma.project.findMany({
     where: {
-      createdById: user.id,
+      OR: [
+        {
+          createdById: user.id,
+        },
+        {
+          users: {
+            some: {
+              userId: user.id,
+              role: "VIEWER",
+              AND: [
+                {
+                  viewerPermissionGrants: {
+                    some: {
+                      permission: "VIEW_PROJECT_PROGRESS",
+                    },
+                  },
+                },
+                {
+                  viewerPermissionGrants: {
+                    some: {
+                      permission: "VIEW_MEMBER_STATS",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
     },
     select: {
       id: true,

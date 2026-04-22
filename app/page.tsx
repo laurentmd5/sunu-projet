@@ -100,9 +100,9 @@ export default function Home() {
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold">Dashboard owner</h1>
+              <h1 className="text-2xl font-bold">Dashboard projets</h1>
               <p className="mt-1 text-sm opacity-70">
-                Vue macro centralisée de vos projets, de leur santé et des alertes prioritaires.
+                Vue centralisée des projets que vous pilotez ou suivez avec les permissions adéquates.
               </p>
             </div>
 

@@ -23,6 +23,9 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [dashboard, setDashboard] = useState<OwnerDashboardOverview | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [projectStatusFilter, setProjectStatusFilter] = useState<
+    "ALL" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "ARCHIVED"
+  >("ALL");
 
   const fetchProjects = async () => {
     try {
@@ -85,6 +88,12 @@ export default function Home() {
     }
   };
 
+  const filteredDashboardProjects =
+    dashboard?.projects.filter((project) => {
+      if (projectStatusFilter === "ALL") return true;
+      return project.projectStatus === projectStatusFilter;
+    }) ?? [];
+
   return (
     <Wrapper>
       <div className="space-y-8">
@@ -107,6 +116,26 @@ export default function Home() {
             </button>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">Filtrer par statut :</span>
+
+            <select
+              className="select select-bordered select-sm"
+              value={projectStatusFilter}
+              onChange={(e) =>
+                setProjectStatusFilter(
+                  e.target.value as "ALL" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "ARCHIVED"
+                )
+              }
+            >
+              <option value="ALL">Tous</option>
+              <option value="ACTIVE">Actifs</option>
+              <option value="ON_HOLD">En pause</option>
+              <option value="COMPLETED">Terminés</option>
+              <option value="ARCHIVED">Archivés</option>
+            </select>
+          </div>
+
           {loadingDashboard ? (
             <div className="rounded-xl border border-base-300 p-5 text-sm opacity-70">
               Chargement du dashboard...
@@ -116,9 +145,9 @@ export default function Home() {
               <OwnerDashboardSummary summary={dashboard.summary} />
               <OwnerPriorityProjects projects={dashboard.projects} />
 
-              {dashboard.projects.length > 0 ? (
+              {filteredDashboardProjects.length > 0 ? (
                 <div className="grid gap-6 xl:grid-cols-2">
-                  {[...dashboard.projects]
+                  {[...filteredDashboardProjects]
                     .sort((a, b) => {
                       const colorWeight = { RED: 0, ORANGE: 1, GREEN: 2 };
                       const colorDiff = colorWeight[a.healthColor] - colorWeight[b.healthColor];
@@ -133,7 +162,11 @@ export default function Home() {
                 <EmptyState
                   imageSrc="/empty-project.png"
                   imageAlt="Aucun projet owner"
-                  message="Aucun projet owner à afficher dans le dashboard."
+                  message={
+                    projectStatusFilter === "ALL"
+                      ? "Aucun projet owner à afficher dans le dashboard."
+                      : "Aucun projet ne correspond à ce statut."
+                  }
                 />
               )}
             </div>

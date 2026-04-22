@@ -41,7 +41,27 @@ function getHealthLabel(color: OwnerDashboardProjectCard["healthColor"]) {
   }
 }
 
+function getProjectStatusBadgeClasses(
+  status: OwnerDashboardProjectCard["projectStatus"]
+) {
+  switch (status) {
+    case "ACTIVE":
+      return "bg-blue-100 text-blue-800 border-blue-200";
+    case "ON_HOLD":
+      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    case "COMPLETED":
+      return "bg-green-100 text-green-800 border-green-200";
+    case "ARCHIVED":
+      return "bg-gray-200 text-gray-700 border-gray-300";
+    default:
+      return "bg-base-200 text-base-content border-base-300";
+  }
+}
+
 export default function OwnerDashboardProjectCard({ card }: Props) {
+  const isClosedProject =
+    card.projectStatus === "COMPLETED" || card.projectStatus === "ARCHIVED";
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -53,12 +73,14 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
             <h2 className="truncate text-lg font-semibold">{card.projectName}</h2>
           </div>
 
-          <p className="mt-2 text-sm opacity-70">
-            Statut projet :{" "}
-            <span className="font-medium">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="opacity-70">Statut projet :</span>
+            <span
+              className={`badge border ${getProjectStatusBadgeClasses(card.projectStatus)}`}
+            >
               {PROJECT_STATUS_LABELS[card.projectStatus]}
             </span>
-          </p>
+          </div>
         </div>
 
         <div
@@ -199,7 +221,9 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
       </p>
 
       <div className="mt-4">
-        <h3 className="mb-2 text-sm font-semibold">Alertes</h3>
+        <h3 className="mb-2 text-sm font-semibold">
+          {isClosedProject ? "Historique des alertes" : "Alertes"}
+        </h3>
 
         {card.alerts.length > 0 ? (
           <div className="space-y-2">

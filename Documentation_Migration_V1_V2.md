@@ -2247,3 +2247,408 @@ Cette étape a particulièrement touché :
 - `app/meetings/page.tsx`
 - `app/meetings/[meetingId]/page.tsx`
 - `Documentation_Migration_V1_V2.md`
+
+
+---
+
+# 20. Avancement complémentaire — lot 8 dashboard projets / owner consolidé (22/04/2026)
+
+## 20.1 Objectif du lot traité
+
+Après la stabilisation du schéma V2, du noyau permissions, du module Équipes, du module Tâches, du socle notifications in-app et du module Réunions, un lot complémentaire a été mené pour rendre le **dashboard projets** réellement exploitable dans la V2.
+
+Ce lot a porté sur :
+
+- la construction d’une vue macro consolidée par projet ;
+- l’introduction d’un score de santé projet ;
+- l’agrégation d’indicateurs métier lisibles pour le pilotage ;
+- l’introduction de métriques membre et équipe ;
+- la prise en compte du cycle de vie du projet dans la lecture dashboard ;
+- la mise en place d’un premier niveau d’explicabilité du score ;
+- l’ouverture progressive du dashboard aux `VIEWER` qualifiés ;
+- la mise en cohérence UI/UX du dashboard avec la densité d’information réelle du module.
+
+## 20.2 Principes fonctionnels retenus
+
+### 20.2.1 Vue macro par projet
+
+La cible V2 a été interprétée comme une **vue centralisée multi-projets** capable de fournir, pour chaque projet :
+
+- un score de santé ;
+- un avancement global ;
+- des alertes prioritaires ;
+- une activité récente ;
+- des métriques de membres ;
+- des métriques d’équipes ;
+- des signaux de risque liés aux jalons.
+
+Le dashboard ne remplace pas la page projet, mais sert de point d’entrée synthétique et de lecture transverse.
+
+### 20.2.2 Priorité à la lisibilité métier
+
+Décision retenue :
+
+- commencer par un MVP utile et fiable ;
+- éviter les calculs trop fragiles ou trop lourds au début ;
+- distinguer clairement :
+  - les signaux opérationnels immédiats ;
+  - les signaux historiques ;
+  - les raffinements visuels.
+
+Le dashboard a donc été construit comme une vue de pilotage progressive et non comme un écran de reporting exhaustif.
+
+### 20.2.3 Distinction entre exécutants et observateurs
+
+Le lot a consolidé la règle suivante :
+
+- les `VIEWER` ne sont pas comptés comme exécutants métier ;
+- les métriques d’activité, de performance membre et de santé projet s’appuient sur les **membres exécutants réels** ;
+- les `VIEWER` restent traités comme observateurs du projet, sauf lorsqu’ils sont explicitement autorisés à consulter le dashboard en lecture.
+
+Cette distinction a été appliquée afin d’éviter toute dégradation artificielle du score santé ou du classement des contributeurs.
+
+## 20.3 Agrégations backend et score de santé
+
+Le backend dashboard a été introduit autour d’une action dédiée de synthèse consolidée.
+
+### 20.3.1 Action serveur dédiée
+
+Une action `getOwnerDashboardOverview()` a été ajoutée afin de renvoyer :
+
+- une liste de cartes projet enrichies ;
+- un résumé global agrégé.
+
+Cette action constitue désormais le point d’entrée principal du dashboard côté front.
+
+### 20.3.2 Données consolidées par projet
+
+Les agrégats suivants ont été mis en place par projet :
+
+- nombre total de tâches ;
+- nombre de tâches actives ;
+- nombre de tâches terminées ;
+- nombre de tâches en retard ;
+- nombre de tâches proches de l’échéance ;
+- nombre de membres actifs sur 7 jours ;
+- nombre d’exécutants ;
+- alertes principales ;
+- activité récente ;
+- état des jalons à risque.
+
+### 20.3.3 Score de santé
+
+Le score de santé projet a été construit autour de trois axes, conformément à la cible V2 :
+
+- taux de retard ;
+- activité récente des membres ;
+- alignement entre le calendrier projet et l’avancement réel.
+
+Le résultat est ensuite traduit dans une couleur de synthèse :
+
+- `GREEN`
+- `ORANGE`
+- `RED`
+
+Cette logique a été encapsulée dans des helpers dédiés au domaine dashboard.
+
+### 20.3.4 Explicabilité du score
+
+Le lot a ajouté une première logique d’explicabilité avec des facteurs principaux tels que :
+
+- retards élevés ;
+- retards à surveiller ;
+- activité faible ;
+- planning à surveiller ;
+- avancement en retard sur le planning.
+
+L’objectif retenu n’était pas seulement d’attribuer une note, mais aussi d’expliquer à l’utilisateur pourquoi cette note baisse.
+
+## 20.4 Priorisation métier et enrichissement des métriques
+
+Une seconde phase du lot a consisté à raffiner la qualité métier des calculs.
+
+### 20.4.1 Pondération par priorité
+
+Les calculs du dashboard ont été enrichis avec une pondération légère des tâches selon leur priorité :
+
+- `LOW`
+- `MEDIUM`
+- `HIGH`
+- `CRITICAL`
+
+Cette pondération est utilisée pour affiner notamment :
+
+- l’avancement du projet ;
+- le taux de retard ;
+- le score de performance des membres ;
+- la progression des équipes.
+
+### 20.4.2 Métriques membre
+
+Le lot a introduit des métriques par membre permettant de faire ressortir :
+
+- les top contributeurs ;
+- les membres à surveiller ;
+- le score de performance ;
+- l’activité récente ;
+- les retards individuels.
+
+Ces métriques ont été volontairement réservées aux exécutants réels du projet.
+
+### 20.4.3 Métriques équipe
+
+Le lot a également introduit des métriques par équipe :
+
+- progression d’équipe ;
+- volume de tâches ;
+- tâches terminées ;
+- tâches en retard ;
+- effectif de l’équipe.
+
+Cette vue permet de mieux exploiter la hiérarchie d’équipes V2 déjà consolidée dans les lots précédents.
+
+## 20.5 Jalons à risque et robustification métier
+
+Le lot a ensuite été renforcé pour éviter des signaux trompeurs sur certains cas limites.
+
+### 20.5.1 Risque jalon
+
+Une logique dédiée d’évaluation du risque jalon a été introduite.
+
+Cette logique compare :
+
+- le niveau d’avancement du jalon ;
+- sa date cible ;
+- le temps déjà écoulé ou restant ;
+- l’écart entre progression réelle et progression attendue.
+
+Elle permet de distinguer au moins :
+
+- risque faible ;
+- risque modéré ;
+- risque critique.
+
+### 20.5.2 Robustesse selon le cycle de vie projet
+
+Le score santé a été adapté afin de prendre en compte correctement les cas suivants :
+
+- projet `ACTIVE` ;
+- projet `ON_HOLD` ;
+- projet `COMPLETED` ;
+- projet `ARCHIVED` ;
+- projet sans tâches ;
+- projet sans exécutants.
+
+Conséquences principales :
+
+- un projet terminé n’est plus pénalisé artificiellement par des retards historiques ;
+- un projet archivé est lu comme clos ;
+- un projet en pause est évalué plus souplement ;
+- un projet vide reçoit un score neutre plutôt qu’un faux signal critique.
+
+## 20.6 Réalignement des actions projet et pilotage du statut
+
+Le lot a mis en évidence que le dashboard utilisait déjà `Project.status`, mais que ce statut n’était pas encore réellement pilotable côté application.
+
+### 20.6.1 Mise à jour du statut projet
+
+Une action serveur `updateProjectStatus()` a été introduite afin de permettre la mise à jour du statut d’un projet avec :
+
+- validation Zod ;
+- contrôle d’accès ;
+- mise à jour Prisma ;
+- message de retour cohérent.
+
+### 20.6.2 Traçabilité projet
+
+Un nouvel événement `PROJECT_STATUS_UPDATED` a été ajouté afin de tracer les changements de statut dans l’historique projet.
+
+Cette évolution a nécessité :
+
+- l’ajout du type dans `ActivityType` ;
+- le branchement de l’activité associée dans l’action serveur.
+
+### 20.6.3 Intégration dans la page projet
+
+La page projet a été enrichie dans l’onglet Aperçu avec :
+
+- un sélecteur de statut ;
+- la gestion de la mise à jour en direct ;
+- le rechargement du projet et de l’activité après changement.
+
+Par prudence, l’interface a été restreinte au rôle `OWNER` pour ce flux.
+
+## 20.7 Ouverture du dashboard aux viewers qualifiés
+
+Le lot a ensuite été étendu afin que le dashboard ne reste pas réservé aux seuls propriétaires de projets.
+
+### 20.7.1 Règle retenue
+
+Un `VIEWER` peut accéder au dashboard d’un projet en lecture si, et seulement si, il dispose simultanément des permissions :
+
+- `VIEW_PROJECT_PROGRESS`
+- `VIEW_MEMBER_STATS`
+
+### 20.7.2 Conséquences fonctionnelles
+
+Le dashboard devient ainsi une vue de suivi ouverte :
+
+- à l’owner créateur du projet ;
+- aux viewers explicitement qualifiés pour la lecture des métriques et de la progression.
+
+Le comportement reste strictement **en lecture** pour ces profils.
+
+### 20.7.3 Ajustement du wording
+
+Le titre du dashboard a été rendu plus neutre afin d’éviter une formulation trop centrée owner lorsque la vue est ouverte à d’autres profils autorisés.
+
+## 20.8 Réalignement du front — carte projet et lisibilité dashboard
+
+Le front a été remanié afin d’absorber la richesse fonctionnelle du lot sans surcharger l’écran.
+
+### 20.8.1 Résumé global
+
+Le haut du dashboard a été enrichi avec un bloc de synthèse affichant :
+
+- nombre de projets ;
+- projets verts ;
+- projets orange ;
+- projets rouges ;
+- volume global de tâches en retard.
+
+### 20.8.2 Projets à surveiller
+
+Une section dédiée **Projets à surveiller** a été ajoutée afin de faire remonter rapidement les projets les plus critiques selon :
+
+- couleur santé ;
+- score ;
+- présence d’alertes principales.
+
+### 20.8.3 Filtres par statut
+
+Le dashboard a été enrichi avec un filtre par statut :
+
+- tous ;
+- actifs ;
+- en pause ;
+- terminés ;
+- archivés.
+
+### 20.8.4 Carte projet enrichie
+
+Les cartes projet affichent désormais :
+
+- nom du projet ;
+- statut ;
+- score santé ;
+- avancement ;
+- message de cycle de vie ;
+- alerte principale ;
+- indicateurs clés ;
+- bouton d’accès au projet.
+
+Les détails secondaires restent accessibles sans surcharger immédiatement la lecture.
+
+## 20.9 Polish UI et réduction de la densité visuelle
+
+Une phase de polish UI a été menée pour éviter que la richesse du dashboard ne devienne contre-productive.
+
+### 20.9.1 Carte compacte par défaut
+
+La carte dashboard a été restructurée afin de mettre en avant par défaut uniquement :
+
+- le résumé immédiat ;
+- les signaux clés ;
+- les compteurs principaux.
+
+### 20.9.2 Détails repliables
+
+Les éléments secondaires ont été déplacés dans une zone repliable “Voir les détails”, notamment :
+
+- dates ;
+- facteurs principaux ;
+- barres détaillées ;
+- historique d’alertes ;
+- activité récente ;
+- insights membres / équipes / jalons.
+
+### 20.9.3 Allègement visuel
+
+Les sous-blocs ont été retravaillés avec :
+
+- moins de bordures lourdes ;
+- des fonds plus discrets ;
+- une hiérarchie plus lisible entre niveau essentiel et niveau secondaire.
+
+### 20.9.4 Adaptation au cycle de vie
+
+La présentation des cartes a été adaptée selon le statut du projet :
+
+- `ACTIVE` conserve une logique de pilotage ;
+- `ON_HOLD` réduit l’urgence des signaux ;
+- `COMPLETED` et `ARCHIVED` basculent vers une logique plus historique et synthétique.
+
+Conséquences :
+
+- les libellés changent selon le cycle de vie ;
+- certains signaux trop opérationnels sont atténués ;
+- les “membres à surveiller” disparaissent sur les projets clos ;
+- les alertes deviennent historiques sur les projets terminés ou archivés.
+
+## 20.10 Vérifications effectuées
+
+Les vérifications suivantes ont été menées au fil du lot :
+
+- builds `npm run build` exécutés après les étapes sensibles ;
+- validation du chargement du dashboard sur la page d’accueil ;
+- validation des cartes projet enrichies ;
+- validation du score de santé et des couleurs associées ;
+- validation du filtre par statut ;
+- validation du comportement des projets clos et en pause ;
+- validation du changement de statut projet et de son activité associée ;
+- validation de l’ouverture du dashboard aux viewers qualifiés ;
+- validation du comportement du mode détails repliable ;
+- validation responsive générale après le polish UI.
+
+## 20.11 Résultat obtenu
+
+À l’issue du lot 8, le **dashboard projets** peut être considéré comme opérationnel sur un MVP enrichi cohérent avec la cible V2.
+
+Les éléments suivants sont désormais stabilisés :
+
+- agrégations backend dashboard ;
+- score de santé projet ;
+- alertes et facteurs explicatifs ;
+- métriques membre et équipe ;
+- pondération par priorité ;
+- jalons à risque ;
+- robustesse selon le cycle de vie projet ;
+- gestion réelle du statut projet ;
+- ouverture du dashboard aux viewers qualifiés ;
+- filtres et polish UI ;
+- lecture compacte avec détails repliables.
+
+Ce lot constitue une avancée majeure dans la concrétisation de la V2, en apportant une véritable vue consolidée de pilotage et de suivi des projets.
+
+## 20.12 Fichiers particulièrement concernés par ce lot
+
+Cette étape a particulièrement touché :
+
+- `prisma/schema.prisma`
+- `type.ts`
+- `lib/dashboard.ts`
+- `lib/project-status.ts`
+- `lib/project-access.ts`
+- `lib/project-capabilities.ts`
+- `lib/permissions.ts`
+- `lib/project-roles.ts`
+- `app/actions/dashboard.ts`
+- `app/actions/projects.ts`
+- `app/actions/index.ts`
+- `app/page.tsx`
+- `app/project/[projectId]/page.tsx`
+- `app/components/OwnerDashboardSummary.tsx`
+- `app/components/OwnerPriorityProjects.tsx`
+- `app/components/OwnerDashboardProjectCard.tsx`
+- `app/components/OwnerDashboardProjectInsights.tsx`
+- `Documentation_Migration_V1_V2.md`

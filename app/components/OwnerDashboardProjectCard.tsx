@@ -58,9 +58,30 @@ function getProjectStatusBadgeClasses(
   }
 }
 
+function getProjectLifecycleMessage(
+  status: OwnerDashboardProjectCard["projectStatus"]
+) {
+  switch (status) {
+    case "ACTIVE":
+      return "Projet en cours d'exécution, à piloter selon les alertes et le rythme d'avancement.";
+    case "ON_HOLD":
+      return "Projet actuellement en pause. Les indicateurs sont à lire avec davantage de recul.";
+    case "COMPLETED":
+      return "Projet terminé. Les indicateurs ci-dessous servent surtout de synthèse de fin.";
+    case "ARCHIVED":
+      return "Projet archivé. Les informations affichées sont conservées à titre historique.";
+    default:
+      return "État du projet non précisé.";
+  }
+}
+
 export default function OwnerDashboardProjectCard({ card }: Props) {
   const isClosedProject =
     card.projectStatus === "COMPLETED" || card.projectStatus === "ARCHIVED";
+
+  const isPausedProject = card.projectStatus === "ON_HOLD";
+  const showOperationalSignals = !isClosedProject;
+  const showHealthDrivers = card.healthDrivers.length > 0 && !isClosedProject;
 
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-5 shadow-sm">
@@ -90,6 +111,10 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
         >
           {getHealthLabel(card.healthColor)}
         </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-base-300 p-3 text-sm opacity-80">
+        {getProjectLifecycleMessage(card.projectStatus)}
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -124,17 +149,17 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
         </div>
       )}
 
-      {card.alerts[0] && (
+      {card.alerts[0] && showOperationalSignals && (
         <div className="mt-4 rounded-lg border border-base-300 p-3 text-sm">
           <div className="mb-1 flex items-center gap-2 font-medium">
             <AlertTriangle className="h-4 w-4" />
-            <span>Alerte principale</span>
+            <span>{isPausedProject ? "Point d'attention" : "Alerte principale"}</span>
           </div>
           <p>{card.alerts[0].message}</p>
         </div>
       )}
 
-      {card.healthDrivers.length > 0 && (
+      {showHealthDrivers && (
         <div className="mt-4">
           <h3 className="mb-2 text-sm font-semibold">Facteurs principaux</h3>
           <div className="flex flex-wrap gap-2">
@@ -153,7 +178,7 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
       <div className="mt-4 space-y-3">
         <div>
           <div className="mb-1 flex justify-between text-sm">
-            <span>Progression globale</span>
+            <span>{isClosedProject ? "Progression finale" : "Progression globale"}</span>
             <span>{card.progressPercent}%</span>
           </div>
           <progress
@@ -165,7 +190,7 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
 
         <div>
           <div className="mb-1 flex justify-between text-sm">
-            <span>Activité récente</span>
+            <span>{isClosedProject ? "Activité observée" : "Activité récente"}</span>
             <span>{card.activityRatePercent}%</span>
           </div>
           <progress
@@ -177,7 +202,7 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
 
         <div>
           <div className="mb-1 flex justify-between text-sm">
-            <span>Alignement planning</span>
+            <span>{isClosedProject ? "Alignement final" : "Alignement planning"}</span>
             <span>{card.scheduleAlignmentPercent}%</span>
           </div>
           <progress
@@ -213,7 +238,9 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
       <div className="mt-4 flex items-center gap-2 text-sm opacity-80">
         <Users className="h-4 w-4" />
         <span>
-          {card.activeMembers7d} membre(s) actifs sur {card.executableMembersCount} exécutant(s)
+          {isClosedProject
+            ? `${card.executableMembersCount} exécutant(s) impliqué(s) dans le projet` 
+            : `${card.activeMembers7d} membre(s) actifs sur ${card.executableMembersCount} exécutant(s)`}
         </span>
       </div>
       <p className="mt-1 text-xs opacity-60">
@@ -239,7 +266,9 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
           </div>
         ) : (
           <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
-            Aucune alerte prioritaire.
+            {isClosedProject
+              ? "Aucune alerte historique notable."
+              : "Aucune alerte prioritaire."}
           </div>
         )}
       </div>
@@ -263,7 +292,10 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
         </div>
       )}
 
-      <OwnerDashboardProjectInsights insights={card.insights} />
+      <OwnerDashboardProjectInsights
+        insights={card.insights}
+        projectStatus={card.projectStatus}
+      />
 
       <div className="mt-5">
         <Link href={`/project/${card.projectId}`} className="btn btn-primary btn-sm">

@@ -5,10 +5,14 @@ import { Award, Flag } from "lucide-react";
 
 type Props = {
   insights?: OwnerDashboardProjectInsight;
+  projectStatus?: "ACTIVE" | "COMPLETED" | "ARCHIVED" | "ON_HOLD";
 };
 
-export default function OwnerDashboardProjectInsights({ insights }: Props) {
+export default function OwnerDashboardProjectInsights({ insights, projectStatus }: Props) {
   if (!insights) return null;
+
+  const isClosedProject =
+    projectStatus === "COMPLETED" || projectStatus === "ARCHIVED";
 
   return (
     <div className="mt-5 space-y-4">
@@ -16,7 +20,7 @@ export default function OwnerDashboardProjectInsights({ insights }: Props) {
         <div className="rounded-lg border border-base-300 p-3 text-sm">
           <div className="mb-1 flex items-center gap-2 font-medium">
             <Award className="h-4 w-4" />
-            <span>Top contributeur</span>
+            <span>{isClosedProject ? "Contributeur marquant" : "Top contributeur"}</span>
           </div>
           <p>{insights.topPerformer.name || insights.topPerformer.email}</p>
           <p className="mt-1 opacity-70">
@@ -30,14 +34,20 @@ export default function OwnerDashboardProjectInsights({ insights }: Props) {
         <div className="rounded-lg border border-base-300 p-3 text-sm">
           <div className="mb-1 flex items-center gap-2 font-medium">
             <Flag className="h-4 w-4" />
-            <span>Jalons à risque</span>
+            <span>{isClosedProject ? "Jalons historiquement sensibles" : "Jalons à risque"}</span>
           </div>
-          <p>{insights.milestonesAtRiskCount} jalon(s) nécessitent une attention particulière.</p>
+          <p>
+            {isClosedProject
+              ? `${insights.milestonesAtRiskCount} jalon(s) ont présenté un risque sur le cycle du projet.` 
+              : `${insights.milestonesAtRiskCount} jalon(s) nécessitent une attention particulière.`}
+          </p>
         </div>
       )}
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">Top contributeurs</h3>
+        <h3 className="mb-2 text-sm font-semibold">
+          {isClosedProject ? "Contributeurs marquants" : "Top contributeurs"}
+        </h3>
         {insights.topMembers.length > 0 ? (
           <div className="space-y-2">
             {insights.topMembers.map((member) => (
@@ -66,35 +76,37 @@ export default function OwnerDashboardProjectInsights({ insights }: Props) {
         )}
       </div>
 
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">Membres à surveiller</h3>
-        {insights.strugglingMembers.length > 0 ? (
-          <div className="space-y-2">
-            {insights.strugglingMembers.map((member) => (
-              <div
-                key={member.userId}
-                className="rounded-lg border border-base-300 p-3 text-sm"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium">
-                    {member.name || member.email}
-                  </span>
-                  <span className="opacity-70">
-                    {member.overdueTasks} retard(s)
-                  </span>
+      {!isClosedProject && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">Membres à surveiller</h3>
+          {insights.strugglingMembers.length > 0 ? (
+            <div className="space-y-2">
+              {insights.strugglingMembers.map((member) => (
+                <div
+                  key={member.userId}
+                  className="rounded-lg border border-base-300 p-3 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">
+                      {member.name || member.email}
+                    </span>
+                    <span className="opacity-70">
+                      {member.overdueTasks} retard(s)
+                    </span>
+                  </div>
+                  <p className="mt-1 opacity-70">
+                    {member.isActive7d ? "Actif récemment" : "Inactif sur 7 jours"}
+                  </p>
                 </div>
-                <p className="mt-1 opacity-70">
-                  {member.isActive7d ? "Actif récemment" : "Inactif sur 7 jours"}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
-            Aucun membre en difficulté détecté.
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
+              Aucun membre en difficulté détecté.
+            </div>
+          )}
+        </div>
+      )}
 
       <div>
         <h3 className="mb-2 text-sm font-semibold">Équipes</h3>

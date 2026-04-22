@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 import { ActionError, getCurrentDbUser } from "@/lib/permissions";
 import { canManageProject, assertHasProjectRole } from "@/lib/project-roles";
 import { canAdminProject } from "@/lib/project-roles";
+import { assertCanCreateTeam } from "@/lib/permissions";
 import { assertValidTeamParent, buildProjectTeamsTree } from "@/lib/team-hierarchy";
 import {
     createTeamSchema,
@@ -147,7 +148,7 @@ export async function createTeam(
     const parsed = createTeamSchema.parse({ name, description, projectId, parentId, leadUserId });
     const user = await getCurrentDbUser();
 
-    await canManageProject(parsed.projectId);
+    await assertCanCreateTeam(parsed.projectId);
     await assertValidTeamParent(parsed.projectId, parsed.parentId);
 
     if (parsed.parentId && parsed.leadUserId) {

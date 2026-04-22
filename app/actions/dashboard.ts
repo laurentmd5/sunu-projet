@@ -33,6 +33,14 @@ export async function getOwnerDashboardOverview(): Promise<OwnerDashboardOvervie
           users: {
             some: {
               userId: user.id,
+              role: "MANAGER",
+            },
+          },
+        },
+        {
+          users: {
+            some: {
+              userId: user.id,
               role: "VIEWER",
               AND: [
                 {

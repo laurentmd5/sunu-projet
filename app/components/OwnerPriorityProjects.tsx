@@ -32,15 +32,15 @@ export default function OwnerPriorityProjects({ projects }: Props) {
         {criticalProjects.map((project) => (
           <div
             key={project.projectId}
-            className="flex flex-col gap-3 rounded-lg border border-base-300 p-4 md:flex-row md:items-center md:justify-between"
+            className="flex flex-col gap-3 rounded-lg bg-base-200/40 p-4 md:flex-row md:items-center md:justify-between"
           >
             <div className="min-w-0">
               <p className="font-medium">{project.projectName}</p>
               <p className="mt-1 text-sm opacity-70">
-                Score santé : {project.healthScore}/100 · {project.overdueTasks} tâche(s) en retard
+                Statut : {project.projectStatus} · Score {project.healthScore}/100
               </p>
               {project.alerts[0] && (
-                <p className="mt-1 text-sm">{project.alerts[0].message}</p>
+                <p className="mt-1 text-sm line-clamp-2">{project.alerts[0].message}</p>
               )}
             </div>
 

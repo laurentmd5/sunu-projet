@@ -17,7 +17,7 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
   return (
     <div className="mt-5 space-y-4">
       {insights.topPerformer && (
-        <div className="rounded-lg border border-base-300 p-3 text-sm">
+        <div className="rounded-lg bg-base-200/40 p-3 text-sm">
           <div className="mb-1 flex items-center gap-2 font-medium">
             <Award className="h-4 w-4" />
             <span>{isClosedProject ? "Contributeur marquant" : "Top contributeur"}</span>
@@ -31,7 +31,7 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
       )}
 
       {(insights.milestonesAtRiskCount ?? 0) > 0 && (
-        <div className="rounded-lg border border-base-300 p-3 text-sm">
+        <div className="rounded-lg bg-base-200/40 p-3 text-sm">
           <div className="mb-1 flex items-center gap-2 font-medium">
             <Flag className="h-4 w-4" />
             <span>{isClosedProject ? "Jalons historiquement sensibles" : "Jalons à risque"}</span>
@@ -53,7 +53,7 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
             {insights.topMembers.map((member) => (
               <div
                 key={member.userId}
-                className="rounded-lg border border-base-300 p-3 text-sm"
+                className="rounded-lg bg-base-200/40 p-3 text-sm"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium">
@@ -70,7 +70,7 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
             ))}
           </div>
         ) : (
-          <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
+          <div className="rounded-lg bg-base-200/30 p-3 text-sm opacity-70">
             Aucun contributeur à classer pour le moment.
           </div>
         )}
@@ -84,7 +84,7 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
               {insights.strugglingMembers.map((member) => (
                 <div
                   key={member.userId}
-                  className="rounded-lg border border-base-300 p-3 text-sm"
+                  className="rounded-lg bg-base-200/40 p-3 text-sm"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium">
@@ -101,7 +101,7 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
+            <div className="rounded-lg bg-base-200/30 p-3 text-sm opacity-70">
               Aucun membre en difficulté détecté.
             </div>
           )}
@@ -112,10 +112,10 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
         <h3 className="mb-2 text-sm font-semibold">Équipes</h3>
         {insights.teamMetrics.length > 0 ? (
           <div className="space-y-2">
-            {insights.teamMetrics.slice(0, 3).map((team) => (
+            {insights.teamMetrics.slice(0, 2).map((team) => (
               <div
                 key={team.teamId}
-                className="rounded-lg border border-base-300 p-3 text-sm"
+                className="rounded-lg bg-base-200/40 p-3 text-sm"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium">{team.teamName}</span>
@@ -128,7 +128,7 @@ export default function OwnerDashboardProjectInsights({ insights, projectStatus 
             ))}
           </div>
         ) : (
-          <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
+          <div className="rounded-lg bg-base-200/30 p-3 text-sm opacity-70">
             Aucune équipe rattachée à ce projet.
           </div>
         )}

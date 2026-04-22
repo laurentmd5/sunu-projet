@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import type { OwnerDashboardProjectCard } from "@/type";
 import { ArrowRight, AlertTriangle, FolderKanban, Users, CalendarClock } from "lucide-react";
@@ -83,6 +84,9 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
   const showOperationalSignals = !isClosedProject;
   const showHealthDrivers = card.healthDrivers.length > 0 && !isClosedProject;
 
+  const [showDetails, setShowDetails] = useState(false);
+  const detailToggleLabel = showDetails ? "Masquer les détails" : "Voir les détails";
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -118,39 +122,19 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-base-300 p-4">
+        <div className="rounded-lg bg-base-200/60 p-4">
           <p className="text-sm opacity-70">Score de santé</p>
           <p className="mt-2 text-3xl font-bold">{card.healthScore}/100</p>
         </div>
 
-        <div className="rounded-lg border border-base-300 p-4">
+        <div className="rounded-lg bg-base-200/60 p-4">
           <p className="text-sm opacity-70">Avancement</p>
           <p className="mt-2 text-3xl font-bold">{card.progressPercent}%</p>
         </div>
       </div>
 
-      {(card.startDate || card.endDate) && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-base-300 p-3 text-sm">
-            <div className="flex items-center gap-2 opacity-70">
-              <CalendarClock className="h-4 w-4" />
-              <span>Début</span>
-            </div>
-            <p className="mt-1 font-medium">{formatOptionalDate(card.startDate)}</p>
-          </div>
-
-          <div className="rounded-lg border border-base-300 p-3 text-sm">
-            <div className="flex items-center gap-2 opacity-70">
-              <CalendarClock className="h-4 w-4" />
-              <span>Échéance</span>
-            </div>
-            <p className="mt-1 font-medium">{formatOptionalDate(card.endDate)}</p>
-          </div>
-        </div>
-      )}
-
       {card.alerts[0] && showOperationalSignals && (
-        <div className="mt-4 rounded-lg border border-base-300 p-3 text-sm">
+        <div className="mt-4 rounded-lg bg-base-200/40 p-3 text-sm">
           <div className="mb-1 flex items-center gap-2 font-medium">
             <AlertTriangle className="h-4 w-4" />
             <span>{isPausedProject ? "Point d'attention" : "Alerte principale"}</span>
@@ -159,79 +143,25 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
         </div>
       )}
 
-      {showHealthDrivers && (
-        <div className="mt-4">
-          <h3 className="mb-2 text-sm font-semibold">Facteurs principaux</h3>
-          <div className="flex flex-wrap gap-2">
-            {card.healthDrivers.map((driver) => (
-              <span
-                key={driver}
-                className="badge badge-outline"
-              >
-                {driver}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-4 space-y-3">
-        <div>
-          <div className="mb-1 flex justify-between text-sm">
-            <span>{isClosedProject ? "Progression finale" : "Progression globale"}</span>
-            <span>{card.progressPercent}%</span>
-          </div>
-          <progress
-            className="progress progress-success w-full"
-            value={card.progressPercent}
-            max={100}
-          />
-        </div>
-
-        <div>
-          <div className="mb-1 flex justify-between text-sm">
-            <span>{isClosedProject ? "Activité observée" : "Activité récente"}</span>
-            <span>{card.activityRatePercent}%</span>
-          </div>
-          <progress
-            className="progress progress-info w-full"
-            value={card.activityRatePercent}
-            max={100}
-          />
-        </div>
-
-        <div>
-          <div className="mb-1 flex justify-between text-sm">
-            <span>{isClosedProject ? "Alignement final" : "Alignement planning"}</span>
-            <span>{card.scheduleAlignmentPercent}%</span>
-          </div>
-          <progress
-            className="progress progress-warning w-full"
-            value={card.scheduleAlignmentPercent}
-            max={100}
-          />
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-lg border border-base-300 p-3">
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-lg bg-base-200/50 p-3">
           <p className="text-xs opacity-70">Tâches totales</p>
-          <p className="mt-1 text-xl font-semibold">{card.totalTasks}</p>
+          <p className="mt-1 text-lg font-semibold">{card.totalTasks}</p>
         </div>
 
-        <div className="rounded-lg border border-base-300 p-3">
+        <div className="rounded-lg bg-base-200/50 p-3">
           <p className="text-xs opacity-70">Tâches actives</p>
-          <p className="mt-1 text-xl font-semibold">{card.activeTasks}</p>
+          <p className="mt-1 text-lg font-semibold">{card.activeTasks}</p>
         </div>
 
-        <div className="rounded-lg border border-base-300 p-3">
+        <div className="rounded-lg bg-base-200/50 p-3">
           <p className="text-xs opacity-70">Terminées</p>
-          <p className="mt-1 text-xl font-semibold">{card.completedTasks}</p>
+          <p className="mt-1 text-lg font-semibold">{card.completedTasks}</p>
         </div>
 
-        <div className="rounded-lg border border-base-300 p-3">
+        <div className="rounded-lg bg-base-200/50 p-3">
           <p className="text-xs opacity-70">En retard</p>
-          <p className="mt-1 text-xl font-semibold">{card.overdueTasks}</p>
+          <p className="mt-1 text-lg font-semibold">{card.overdueTasks}</p>
         </div>
       </div>
 
@@ -247,55 +177,140 @@ export default function OwnerDashboardProjectCard({ card }: Props) {
         {card.membersCount} membre(s) au total dans le projet
       </p>
 
-      <div className="mt-4">
-        <h3 className="mb-2 text-sm font-semibold">
-          {isClosedProject ? "Historique des alertes" : "Alertes"}
-        </h3>
-
-        {card.alerts.length > 0 ? (
-          <div className="space-y-2">
-            {card.alerts.slice(0, 3).map((alert, index) => (
-              <div
-                key={`${alert.type}-${index}`}
-                className="flex items-start gap-2 rounded-lg border border-base-300 p-3 text-sm"
-              >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{alert.message}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-lg border border-base-300 p-3 text-sm opacity-70">
-            {isClosedProject
-              ? "Aucune alerte historique notable."
-              : "Aucune alerte prioritaire."}
-          </div>
-        )}
+      <div className="mt-5">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm px-0"
+          onClick={() => setShowDetails((prev) => !prev)}
+        >
+          {detailToggleLabel}
+        </button>
       </div>
 
-      {card.recentActivity.length > 0 && (
-        <div className="mt-5">
-          <h3 className="mb-2 text-sm font-semibold">Activité récente</h3>
-          <div className="space-y-2">
-            {card.recentActivity.slice(0, 3).map((log) => (
-              <div
-                key={log.id}
-                className="rounded-lg border border-base-300 p-3 text-sm"
-              >
-                <p>{log.message}</p>
-                <p className="mt-1 text-xs opacity-60">
-                  {new Date(log.createdAt).toLocaleString("fr-FR")}
-                </p>
+      {showDetails && (
+        <div className="mt-4 space-y-5 border-t border-base-300 pt-4">
+          {(card.startDate || card.endDate) && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg bg-base-200/40 p-3 text-sm">
+                <div className="flex items-center gap-2 opacity-70">
+                  <CalendarClock className="h-4 w-4" />
+                  <span>Début</span>
+                </div>
+                <p className="mt-1 font-medium">{formatOptionalDate(card.startDate)}</p>
               </div>
-            ))}
+
+              <div className="rounded-lg bg-base-200/40 p-3 text-sm">
+                <div className="flex items-center gap-2 opacity-70">
+                  <CalendarClock className="h-4 w-4" />
+                  <span>Échéance</span>
+                </div>
+                <p className="mt-1 font-medium">{formatOptionalDate(card.endDate)}</p>
+              </div>
+            </div>
+          )}
+
+          {showHealthDrivers && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Facteurs principaux</h3>
+              <div className="flex flex-wrap gap-2">
+                {card.healthDrivers.map((driver) => (
+                  <span key={driver} className="badge badge-outline">
+                    {driver}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 flex justify-between text-sm">
+                <span>{isClosedProject ? "Progression finale" : "Progression globale"}</span>
+                <span>{card.progressPercent}%</span>
+              </div>
+              <progress
+                className="progress progress-success w-full"
+                value={card.progressPercent}
+                max={100}
+              />
+            </div>
+
+            <div>
+              <div className="mb-1 flex justify-between text-sm">
+                <span>{isClosedProject ? "Activité observée" : "Activité récente"}</span>
+                <span>{card.activityRatePercent}%</span>
+              </div>
+              <progress
+                className="progress progress-info w-full"
+                value={card.activityRatePercent}
+                max={100}
+              />
+            </div>
+
+            <div>
+              <div className="mb-1 flex justify-between text-sm">
+                <span>{isClosedProject ? "Alignement final" : "Alignement planning"}</span>
+                <span>{card.scheduleAlignmentPercent}%</span>
+              </div>
+              <progress
+                className="progress progress-warning w-full"
+                value={card.scheduleAlignmentPercent}
+                max={100}
+              />
+            </div>
           </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">
+              {isClosedProject ? "Historique des alertes" : "Alertes"}
+            </h3>
+
+            {card.alerts.length > 0 ? (
+              <div className="space-y-2">
+                {card.alerts.slice(0, 3).map((alert, index) => (
+                  <div
+                    key={`${alert.type}-${index}`}
+                    className="flex items-start gap-2 rounded-lg bg-base-200/40 p-3 text-sm"
+                  >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{alert.message}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-base-200/40 p-3 text-sm opacity-70">
+                {isClosedProject
+                  ? "Aucune alerte historique notable."
+                  : "Aucune alerte prioritaire."}
+              </div>
+            )}
+          </div>
+
+          {card.recentActivity.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Activité récente</h3>
+              <div className="space-y-2">
+                {card.recentActivity.slice(0, 3).map((log) => (
+                  <div
+                    key={log.id}
+                    className="rounded-lg bg-base-200/40 p-3 text-sm"
+                  >
+                    <p>{log.message}</p>
+                    <p className="mt-1 text-xs opacity-60">
+                      {new Date(log.createdAt).toLocaleString("fr-FR")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <OwnerDashboardProjectInsights
+            insights={card.insights}
+            projectStatus={card.projectStatus}
+          />
         </div>
       )}
-
-      <OwnerDashboardProjectInsights
-        insights={card.insights}
-        projectStatus={card.projectStatus}
-      />
 
       <div className="mt-5">
         <Link href={`/project/${card.projectId}`} className="btn btn-primary btn-sm">

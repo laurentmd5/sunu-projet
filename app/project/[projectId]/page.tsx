@@ -229,6 +229,19 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         currentUserRole === "OWNER" || currentUserRole === "MANAGER";
     const canManageProjectStatus = currentUserRole === "OWNER";
 
+    const canViewProjectProgress =
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER" ||
+        currentUserRole === "MEMBER" ||
+        (currentUserRole === "VIEWER" &&
+            currentViewerPermissions.includes("VIEW_PROJECT_PROGRESS"));
+
+    const canViewMemberStats =
+        currentUserRole === "OWNER" ||
+        currentUserRole === "MANAGER" ||
+        (currentUserRole === "VIEWER" &&
+            currentViewerPermissions.includes("VIEW_MEMBER_STATS"));
+
     const groupedMembers = useMemo(() => {
         const sorted = [...members].sort((a, b) => {
             const roleOrderDiff = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];
@@ -576,6 +589,9 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     project={project}
                     taskCount={project?.tasks?.length || 0}
                     activityPreview={activityLogs.slice(0, 5)}
+                    members={members}
+                    canViewProjectProgress={canViewProjectProgress}
+                    canViewMemberStats={canViewMemberStats}
                 />
 
                 {activeTab === "tasks" && (

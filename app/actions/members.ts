@@ -118,7 +118,7 @@ export async function updateProjectMemberRole(
 
     if (membership.role === "VIEWER") {
         throw new ActionError(
-            "Le rôle VIEWER doit être géré via les actions dédiées aux permissions viewer.",
+            "Le rôle VIEWER doit être géré via les actions dédiées aux permissions observateur.",
             400
         );
     }
@@ -181,248 +181,248 @@ export async function updateProjectMemberRole(
 }
 
 export async function createProjectViewer(
-    projectId: string,
-    viewerEmail: string,
-    permissions: ViewerPermission[]
+  projectId: string,
+  viewerEmail: string,
+  permissions: ViewerPermission[]
 ) {
-    const currentUser = await getCurrentDbUser();
-    await assertCanManageViewers(projectId);
+  const currentUser = await getCurrentDbUser();
+  await assertCanManageViewers(projectId);
 
-    if (!viewerEmail?.trim()) {
-        throw new ActionError("Email viewer invalide.", 400);
-    }
+  if (!viewerEmail?.trim()) {
+    throw new ActionError("Email observateur invalide.", 400);
+  }
 
-    const targetUser = await prisma.user.findUnique({
-        where: { email: viewerEmail.trim() },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-        },
-    });
+  const targetUser = await prisma.user.findUnique({
+    where: { email: viewerEmail.trim() },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  });
 
-    if (!targetUser) {
-        throw new ActionError("Utilisateur introuvable pour cet email.", 404);
-    }
+  if (!targetUser) {
+    throw new ActionError("Utilisateur introuvable pour cet email.", 404);
+  }
 
-    const existingMembership = await prisma.projectUser.findUnique({
-        where: {
-            userId_projectId: {
-                userId: targetUser.id,
-                projectId,
-            },
-        },
-    });
-
-    if (existingMembership) {
-        throw new ActionError("Cet utilisateur appartient déjà au projet.", 400);
-    }
-
-    const uniquePermissions = Array.from(new Set(permissions ?? []));
-
-    const viewerMembership = await prisma.projectUser.create({
-        data: {
-            userId: targetUser.id,
-            projectId,
-            role: "VIEWER",
-            scope: "EXTERNAL",
-            viewerPermissionGrants: {
-                create: uniquePermissions.map((permission) => ({
-                    permission,
-                })),
-            },
-        },
-        include: {
-            user: true,
-            viewerPermissionGrants: true,
-        },
-    });
-
-    await createActivityLog({
+  const existingMembership = await prisma.projectUser.findUnique({
+    where: {
+      userId_projectId: {
+        userId: targetUser.id,
         projectId,
-        actorUserId: currentUser.id,
+      },
+    },
+  });
+
+  if (existingMembership) {
+    throw new ActionError("Cet utilisateur appartient déjà au projet.", 400);
+  }
+
+  const uniquePermissions = Array.from(new Set(permissions ?? []));
+
+  const viewerMembership = await prisma.projectUser.create({
+    data: {
+      userId: targetUser.id,
+      projectId,
+      role: "VIEWER",
+      scope: "EXTERNAL",
+      viewerPermissionGrants: {
+        create: uniquePermissions.map((permission) => ({
+          permission,
+        })),
+      },
+    },
+    include: {
+      user: true,
+      viewerPermissionGrants: true,
+    },
+  });
+
+  await createActivityLog({
+    projectId,
+    actorUserId: currentUser.id,
+    type: "VIEWER_INVITED",
+    message: `${currentUser.name} a ajouté ${viewerMembership.user.name} comme observateur.`,
+    metadata: {
+      projectId,
+      actorUserId: currentUser.id,
+      targetUserId: targetUser.id,
+      permissions: uniquePermissions,
+    },
+  });
+
+  try {
+    if (targetUser.id !== currentUser.id) {
+      await createNotification({
+        userId: targetUser.id,
         type: "VIEWER_INVITED",
-        message: `${currentUser.name} a ajouté ${viewerMembership.user.name} comme VIEWER.`,
+        title: "Accès observateur accordé",
+        message: `${currentUser.name} vous a ajouté comme observateur sur un projet.`,
         metadata: {
-            projectId,
-            actorUserId: currentUser.id,
-            targetUserId: targetUser.id,
-            permissions: uniquePermissions,
+          projectId,
+          actorUserId: currentUser.id,
         },
-    });
-
-    try {
-        if (targetUser.id !== currentUser.id) {
-            await createNotification({
-                userId: targetUser.id,
-                type: "VIEWER_INVITED",
-                title: "Accès observateur accordé",
-                message: `${currentUser.name} vous a ajouté comme observateur sur un projet.`,
-                metadata: {
-                    projectId,
-                    actorUserId: currentUser.id,
-                },
-            });
-        }
-    } catch (error) {
-        console.error(
-            "Erreur lors de la création de la notification viewer :",
-            error
-        );
+      });
     }
+  } catch (error) {
+    console.error(
+      "Erreur lors de la création de la notification observateur :",
+      error
+    );
+  }
 
-    revalidatePath(`/project/${projectId}`);
+  revalidatePath(`/project/${projectId}`);
 
-    return {
-        success: true,
-        message: "Viewer ajouté avec succès.",
-        viewer: viewerMembership,
-    };
+  return {
+    success: true,
+    message: "Observateur ajouté avec succès.",
+    viewer: viewerMembership,
+  };
 }
 
 export async function updateViewerPermissions(
-    projectId: string,
-    viewerUserId: string,
-    permissions: ViewerPermission[]
+  projectId: string,
+  viewerUserId: string,
+  permissions: ViewerPermission[]
 ) {
-    const currentUser = await getCurrentDbUser();
-    await assertCanManageViewers(projectId);
+  const currentUser = await getCurrentDbUser();
+  await assertCanManageViewers(projectId);
 
-    if (!viewerUserId) {
-        throw new ActionError("Viewer invalide.", 400);
-    }
+  if (!viewerUserId) {
+    throw new ActionError("Observateur invalide.", 400);
+  }
 
-    const viewerMembership = await prisma.projectUser.findUnique({
-        where: {
-            userId_projectId: {
-                userId: viewerUserId,
-                projectId,
-            },
-        },
-        include: {
-            user: true,
-            viewerPermissionGrants: true,
-        },
-    });
-
-    if (!viewerMembership) {
-        throw new ActionError("Viewer introuvable dans ce projet.", 404);
-    }
-
-    if (viewerMembership.role !== "VIEWER") {
-        throw new ActionError("Les permissions granulaires ne s'appliquent qu'aux VIEWER.", 400);
-    }
-
-    const uniquePermissions = Array.from(new Set(permissions ?? []));
-
-    await prisma.viewerPermissionGrant.deleteMany({
-        where: {
-            projectUserId: viewerMembership.id,
-        },
-    });
-
-    if (uniquePermissions.length > 0) {
-        await prisma.viewerPermissionGrant.createMany({
-            data: uniquePermissions.map((permission) => ({
-                projectUserId: viewerMembership.id,
-                permission,
-            })),
-            skipDuplicates: true,
-        });
-    }
-
-    await createActivityLog({
+  const viewerMembership = await prisma.projectUser.findUnique({
+    where: {
+      userId_projectId: {
+        userId: viewerUserId,
         projectId,
-        actorUserId: currentUser.id,
-        type: "VIEWER_PERMISSIONS_UPDATED",
-        message: `${currentUser.name} a mis à jour les permissions viewer de ${viewerMembership.user.name}.`,
-        metadata: {
-            projectId,
-            actorUserId: currentUser.id,
-            targetUserId: viewerUserId,
-            permissions: uniquePermissions,
-        },
+      },
+    },
+    include: {
+      user: true,
+      viewerPermissionGrants: true,
+    },
+  });
+
+  if (!viewerMembership) {
+    throw new ActionError("Observateur introuvable dans ce projet.", 404);
+  }
+
+  if (viewerMembership.role !== "VIEWER") {
+    throw new ActionError("Les permissions granulaires ne s'appliquent qu'aux observateurs.", 400);
+  }
+
+  const uniquePermissions = Array.from(new Set(permissions ?? []));
+
+  await prisma.viewerPermissionGrant.deleteMany({
+    where: {
+      projectUserId: viewerMembership.id,
+    },
+  });
+
+  if (uniquePermissions.length > 0) {
+    await prisma.viewerPermissionGrant.createMany({
+      data: uniquePermissions.map((permission) => ({
+        projectUserId: viewerMembership.id,
+        permission,
+      })),
+      skipDuplicates: true,
     });
+  }
 
-    try {
-        if (viewerUserId !== currentUser.id) {
-            await createNotification({
-                userId: viewerUserId,
-                type: "VIEWER_PERMISSIONS_UPDATED",
-                title: "Permissions observateur mises à jour",
-                message: `${currentUser.name} a mis à jour vos permissions observateur sur un projet.`,
-                metadata: {
-                    projectId,
-                    actorUserId: currentUser.id,
-                },
-            });
-        }
-    } catch (error) {
-        console.error(
-            "Erreur lors de la création de la notification de mise à jour viewer :",
-            error
-        );
+  await createActivityLog({
+    projectId,
+    actorUserId: currentUser.id,
+    type: "VIEWER_PERMISSIONS_UPDATED",
+    message: `${currentUser.name} a mis à jour les permissions observateur de ${viewerMembership.user.name}.`,
+    metadata: {
+      projectId,
+      actorUserId: currentUser.id,
+      targetUserId: viewerUserId,
+      permissions: uniquePermissions,
+    },
+  });
+
+  try {
+    if (viewerUserId !== currentUser.id) {
+      await createNotification({
+        userId: viewerUserId,
+        type: "VIEWER_PERMISSIONS_UPDATED",
+        title: "Permissions observateur mises à jour",
+        message: `${currentUser.name} a mis à jour vos permissions observateur sur un projet.`,
+        metadata: {
+          projectId,
+          actorUserId: currentUser.id,
+        },
+      });
     }
+  } catch (error) {
+    console.error(
+      "Erreur lors de la création de la notification de mise à jour observateur :",
+      error
+    );
+  }
 
-    revalidatePath(`/project/${projectId}`);
+  revalidatePath(`/project/${projectId}`);
 
-    return {
-        success: true,
-        message: "Permissions viewer mises à jour avec succès.",
-    };
+  return {
+    success: true,
+    message: "Permissions observateur mises à jour avec succès.",
+  };
 }
 
 export async function removeProjectMember(projectId: string, memberUserId: string) {
-    const currentUser = await getCurrentDbUser();
-    await assertCanManageMembers(projectId);
+  const currentUser = await getCurrentDbUser();
+  await assertCanManageMembers(projectId);
 
-    if (!memberUserId) {
-        throw new ActionError("Collaborateur invalide.", 400);
-    }
+  if (!memberUserId) {
+    throw new ActionError("Collaborateur invalide.", 400);
+  }
 
-    const membership = await prisma.projectUser.findUnique({
-        where: {
-            userId_projectId: {
-                userId: memberUserId,
-                projectId,
-            },
-        },
-        include: {
-            user: true,
-        },
-    });
-
-    if (!membership) {
-        throw new ActionError("Collaborateur introuvable dans ce projet.", 404);
-    }
-
-    if (membership.role === "OWNER") {
-        throw new ActionError("Le propriétaire du projet ne peut pas être retiré.", 400);
-    }
-
-    await prisma.projectUser.delete({
-        where: {
-            userId_projectId: {
-                userId: memberUserId,
-                projectId,
-            },
-        },
-    });
-
-    await createActivityLog({
+  const membership = await prisma.projectUser.findUnique({
+    where: {
+      userId_projectId: {
+        userId: memberUserId,
         projectId,
-        actorUserId: currentUser.id,
-        type: "MEMBER_REMOVED",
-        message: `${currentUser.name} a retiré ${membership.user.name} du projet.`,
-        metadata: {
-            projectId,
-            actorUserId: currentUser.id,
-            targetUserId: memberUserId,
-            removedRole: membership.role,
-        },
-    });
+      },
+    },
+    include: {
+      user: true,
+    },
+  });
 
-    revalidatePath(`/project/${projectId}`);
+  if (!membership) {
+    throw new ActionError("Collaborateur introuvable dans ce projet.", 404);
+  }
 
-    return { success: true, message: "Collaborateur retiré du projet avec succès." };
+  if (membership.role === "OWNER") {
+    throw new ActionError("Le propriétaire du projet ne peut pas être retiré.", 400);
+  }
+
+  await prisma.projectUser.delete({
+    where: {
+      userId_projectId: {
+        userId: memberUserId,
+        projectId,
+      },
+    },
+  });
+
+  await createActivityLog({
+    projectId,
+    actorUserId: currentUser.id,
+    type: "MEMBER_REMOVED",
+    message: `${currentUser.name} a retiré ${membership.user.name} du projet.`,
+    metadata: {
+      projectId,
+      actorUserId: currentUser.id,
+      targetUserId: memberUserId,
+      removedRole: membership.role,
+    },
+  });
+
+  revalidatePath(`/project/${projectId}`);
+
+  return { success: true, message: "Collaborateur retiré du projet avec succès." };
 }

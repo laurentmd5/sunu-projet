@@ -4,8 +4,8 @@ import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { ActionError, getCurrentDbUser } from "@/lib/permissions";
-import { canManageProject, assertHasProjectRole } from "@/lib/project-roles";
+import { ActionError, assertCanReadProject, getCurrentDbUser } from "@/lib/permissions";
+import { canManageProject } from "@/lib/project-roles";
 import { canAdminProject } from "@/lib/project-roles";
 import { assertCanCreateTeam } from "@/lib/permissions";
 import { assertValidTeamParent, buildProjectTeamsTree } from "@/lib/team-hierarchy";
@@ -231,7 +231,7 @@ export async function createTeam(
 export async function getProjectTeams(projectId: string): Promise<ProjectTeamsResult> {
     const parsed = getProjectTeamsSchema.parse({ projectId });
 
-    await assertHasProjectRole(parsed.projectId, ["OWNER", "MANAGER", "MEMBER", "VIEWER"]);
+    await assertCanReadProject(parsed.projectId);
 
     const teams = await prisma.team.findMany({
         where: {
@@ -442,7 +442,7 @@ export async function getTeamDetails(teamId: string) {
         throw new ActionError("Équipe introuvable.", 404);
     }
 
-    await assertHasProjectRole(team.projectId, ["OWNER", "MANAGER", "MEMBER", "VIEWER"]);
+    await assertCanReadProject(team.projectId);
 
     return {
         ...team,
@@ -470,7 +470,7 @@ export async function getTeamMembers(teamId: string) {
         throw new ActionError("Équipe introuvable.", 404);
     }
 
-    await assertHasProjectRole(team.projectId, ["OWNER", "MANAGER", "MEMBER", "VIEWER"]);
+    await assertCanReadProject(team.projectId);
 
     return prisma.teamMember.findMany({
         where: { teamId: team.id },

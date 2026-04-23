@@ -6,6 +6,15 @@ import { PROJECT_ROLE_LABELS } from "@/lib/project-role-labels";
 import type { ProjectRole, ProjectUserMember } from "@/type";
 import type { ViewerPermission } from "@/lib/permissions-core";
 
+ const VIEWER_PERMISSION_LABELS: Record<ViewerPermission, string> = {
+     VIEW_PROJECT_PROGRESS: "Voir l'avancement du projet",
+     VIEW_MEMBER_STATS: "Voir les statistiques des membres",
+     ASSIGN_TASKS: "Assigner des tâches",
+     CREATE_TASK: "Créer des tâches",
+     VIEW_MEETINGS: "Voir les réunions",
+     JOIN_MEETINGS: "Rejoindre les réunions",
+ };
+
 const ROLE_ORDER: Record<ProjectRole, number> = {
     OWNER: 0,
     MANAGER: 1,
@@ -139,7 +148,7 @@ export default function ProjectMembersTab(props: Props) {
             >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
-                        <p className="font-medium break-words">
+                        <p className="font-medium wrap-break-word">
                             {member.user.name || "Utilisateur"}
                             {isCurrentUser && (
                                 <span className="ml-2 text-xs opacity-70">(Vous)</span>
@@ -159,7 +168,7 @@ export default function ProjectMembersTab(props: Props) {
                             {member.permissions?.length ? (
                                 member.permissions.map((permission) => (
                                     <span key={permission} className="badge badge-outline badge-sm">
-                                        {permission}
+                                        {VIEWER_PERMISSION_LABELS[permission as ViewerPermission] ?? permission}
                                     </span>
                                 ))
                             ) : (
@@ -175,7 +184,7 @@ export default function ProjectMembersTab(props: Props) {
                                         startEditViewerPermissions(member.userId, member.permissions ?? [])
                                     }
                                 >
-                                    Modifier permissions
+                                    Modifier les permissions
                                 </button>
 
                                 <button
@@ -341,7 +350,7 @@ export default function ProjectMembersTab(props: Props) {
                     <input
                         type="email"
                         className="input input-bordered w-full mb-3"
-                        placeholder="Email du viewer"
+                        placeholder="Email de l'observateur"
                         value={viewerEmail}
                         onChange={(e) => setViewerEmail(e.target.value)}
                     />
@@ -381,7 +390,7 @@ export default function ProjectMembersTab(props: Props) {
                         }}
                         disabled={isCreatingViewer || !viewerEmail.trim()}
                     >
-                        {isCreatingViewer ? "Ajout..." : "Ajouter le viewer"}
+                        {isCreatingViewer ? "Ajout..." : "Ajouter l'observateur"}
                     </button>
                 </div>
             </dialog>

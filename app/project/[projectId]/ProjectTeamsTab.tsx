@@ -523,15 +523,6 @@ function RootTeamCard({
                                         {child.description || "Aucune description."}
                                     </p>
 
-                                    <div className="mt-2 text-sm">
-                                        <span className="font-medium">Chef d'équipe : </span>
-                                        <span className="opacity-80">
-                                            {child.lead
-                                                ? `${child.lead.name || "Utilisateur"} (${child.lead.email})`
-                                                : "Aucun"}
-                                        </span>
-                                    </div>
-
                                     <div className="flex flex-wrap gap-2 mt-2 text-xs">
                                         <span className="badge badge-outline">
                                             {child.directMembersCount} membre(s)

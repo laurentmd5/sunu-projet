@@ -19,6 +19,15 @@ import {
     clearTaskRoutingSchema,
 } from "@/lib/validations";
 
+function stripHtmlToText(value?: string | null) {
+    if (!value) return "";
+    return value
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 async function assertUserAssignableWithinResponsibleTeam(
     projectId: string,
     userId: string,
@@ -648,7 +657,7 @@ export const getTaskDetails = async (taskId: string) => {
                     },
                 },
                 orderBy: {
-                    createdAt: "asc",
+                    createdAt: "desc",
                 },
             },
             routing: {
@@ -1387,10 +1396,13 @@ export const updateTaskStatus = async (
         );
     }
 
+    const newSolutionText = stripHtmlToText(parsed.solutionDescription);
+    const existingSolutionText = stripHtmlToText(task.solutionDescription);
+
     if (
         parsed.newStatus === TASK_STATUSES.DONE &&
-        !parsed.solutionDescription?.trim() &&
-        !task.solutionDescription?.trim()
+        !newSolutionText &&
+        !existingSolutionText
     ) {
         throw new ActionError(
             "Une description de solution est requise pour terminer la tâche.",

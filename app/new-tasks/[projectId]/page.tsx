@@ -23,18 +23,51 @@ interface User {
 const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const { email: currentEmail, isLoading } = useAuthUser();
 
-    const modules = {
-        toolbar: [
-            [{ header: [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ font: [] }],
-            [{ list: 'ordered' }, { list: 'bullet' }],
-            [{ color: [] }, { background: [] }],
-            ['blockquote', 'code-block'],
-            ['link', 'image'],
-            ['clean'],
-        ],
+    const imageHandler = () => {
+        const input = document.createElement("input");
+        input.setAttribute("type", "file");
+        input.setAttribute("accept", "image/*");
+        input.click();
+
+        input.onchange = () => {
+            const file = input.files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                const quill = document.querySelector(".ql-editor");
+                const editor = quill?.closest(".ql-container");
+                const toolbarEditor = (editor as any)?.__quill;
+
+                if (!toolbarEditor) return;
+
+                const range = toolbarEditor.getSelection(true);
+                toolbarEditor.insertEmbed(range?.index || 0, "image", reader.result);
+            };
+            reader.readAsDataURL(file);
+        };
     };
+
+    const modules = useMemo(
+        () => ({
+            toolbar: {
+                container: [
+                    [{ header: [1, 2, 3, false] }],
+                    ["bold", "italic", "underline", "strike"],
+                    [{ font: [] }],
+                    [{ list: "ordered" }, { list: "bullet" }],
+                    [{ color: [] }, { background: [] }],
+                    ["blockquote", "code-block"],
+                    ["link", "image"],
+                    ["clean"],
+                ],
+                handlers: {
+                    image: imageHandler,
+                },
+            },
+        }),
+        []
+    );
 
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);

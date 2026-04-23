@@ -59,7 +59,7 @@ export const createTaskSchema = z.object({
     description: z
         .string()
         .trim()
-        .max(2000, "La description de la tâche est trop longue.")
+        .max(1000000, "La description de la tâche est trop longue.")
         .optional()
         .or(z.literal("")),
     dueDate: z.date().nullable(),
@@ -103,7 +103,7 @@ export const updateTaskStatusSchema = z.object({
     solutionDescription: z
         .string()
         .trim()
-        .max(2000, "La description de solution est trop longue.")
+        .max(1000000, "La description de solution est trop longue.")
         .optional(),
 });
 

@@ -272,7 +272,13 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
 
         try {
-            if (solution != "") {
+            const plainSolution = solution
+                .replace(/<[^>]*>/g, " ")
+                .replace(/&nbsp;/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+
+            if (plainSolution) {
                 await updateTaskStatus(taskId, newStatus, solution)
                 fetchInfos(taskId)
                 if (modal) {
@@ -673,7 +679,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
                     <div className='ql-snow w-full'>
                         <div
-                            className='ql-editor p-5 border-base-300 border rounded-xl'
+                            className='ql-editor p-5 border-base-300 border rounded-xl [&_img]:max-w-full [&_img]:h-auto [&_pre]:whitespace-pre-wrap'
                             dangerouslySetInnerHTML={{ __html: task.description }}
                         />
                     </div>
@@ -685,7 +691,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                             </div>
                             <div className='ql-snow w-full'>
                                 <div
-                                    className='ql-editor p-5 border-base-300 border rounded-xl'
+                                    className='ql-editor p-5 border-base-300 border rounded-xl [&_img]:max-w-full [&_img]:h-auto [&_pre]:whitespace-pre-wrap'
                                     dangerouslySetInnerHTML={{ __html: task.solutionDescription }}
                                 />
                             </div>
